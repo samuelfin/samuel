@@ -18,6 +18,8 @@ export interface ReviewQueueItem {
   sourceUri: string | null;
   publishedAt: string | null;
   createdAt: string;
+  /** Cleared by the person who uploaded it, with nobody else checking. */
+  selfApproved: boolean;
 }
 
 export interface ReviewEvent {
@@ -42,7 +44,7 @@ interface DocumentRow {
   created_at: string;
 }
 
-function toItem(row: DocumentRow): ReviewQueueItem {
+function toItem(row: DocumentRow, selfApproved: ReadonlySet<string>): ReviewQueueItem {
   return {
     id: row.id,
     title: row.title,
@@ -54,7 +56,30 @@ function toItem(row: DocumentRow): ReviewQueueItem {
     sourceUri: row.source_uri,
     publishedAt: row.published_at,
     createdAt: row.created_at,
+    selfApproved: selfApproved.has(row.id),
   };
+}
+
+/**
+ * Which of these documents were cleared by their own uploader.
+ *
+ * Read from the review event rather than inferred by comparing uploaded_by with
+ * reviewed_by: once a document is superseded, reviewed_by names whoever did that,
+ * which would misreport who approved it. The event is the record.
+ */
+async function selfApprovedIds(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  documentIds: string[],
+): Promise<ReadonlySet<string>> {
+  if (documentIds.length === 0) return new Set();
+  const { data, error } = await supabase
+    .from("document_review_events")
+    .select("document_id")
+    .eq("self_approved", true)
+    .in("document_id", documentIds);
+
+  if (error || !data) return new Set();
+  return new Set(data.map((row) => row.document_id as string));
 }
 
 /** Documents awaiting a decision, oldest first: the queue is worked front to back. */
@@ -69,7 +94,8 @@ export async function listReviewQueue(): Promise<ReviewQueueItem[]> {
     .limit(100);
 
   if (error || !data) return [];
-  return (data as DocumentRow[]).map(toItem);
+  // Nothing pending has been approved yet, so no event lookup is needed.
+  return (data as DocumentRow[]).map((row) => toItem(row, new Set()));
 }
 
 /** Recently decided documents, so a reviewer can see the effect of their work. */
@@ -84,7 +110,9 @@ export async function listRecentlyReviewed(): Promise<ReviewQueueItem[]> {
     .limit(20);
 
   if (error || !data) return [];
-  return (data as DocumentRow[]).map(toItem);
+  const rows = data as DocumentRow[];
+  const selfApproved = await selfApprovedIds(supabase, rows.map((row) => row.id));
+  return rows.map((row) => toItem(row, selfApproved));
 }
 
 export async function listReviewHistory(documentId: string): Promise<ReviewEvent[]> {

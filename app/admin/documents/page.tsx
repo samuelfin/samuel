@@ -43,6 +43,11 @@ function DocumentRow({ item, decidable }: { item: ReviewQueueItem; decidable: bo
         </p>
       </div>
       <div className="review-row-actions">
+        {item.selfApproved ? (
+          <span className="self-approved-flag" title="Cleared by the person who uploaded it">
+            SELF-APPROVED
+          </span>
+        ) : null}
         <OpenDocumentButton documentId={item.id} />
         {decidable ? <ReviewDecision documentId={item.id} /> : <span className="role-scope">{item.reviewStatus}</span>}
       </div>
@@ -130,7 +135,9 @@ export default async function DocumentReviewPage() {
             )}
             <p className="panel-note">
               Every decision is append-only and names its reviewer. A rejection records a reason; a correction
-              supersedes the original rather than replacing it.
+              supersedes the original rather than replacing it. A document cleared by its own uploader is marked
+              <strong> SELF-APPROVED</strong> — turn on <code>review.require_two_person</code> to refuse those
+              outright once a second reviewer is in place.
             </p>
           </section>
 

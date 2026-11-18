@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "scan:secrets": "node scripts/scan-secrets.mjs",
+    "smoke:storage": "node scripts/smoke-storage.mjs",
     "audit:deps": "npm audit --audit-level=high",
     "check": "npm run lint && npm run typecheck && npm run test && npm run scan:secrets"
   },

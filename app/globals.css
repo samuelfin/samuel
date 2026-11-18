@@ -254,3 +254,4 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #d8b9
 .review-row-actions{align-items:stretch;width:100%}
 .review-decision,.review-open{justify-content:flex-start}
 }
+.self-approved-flag{font:8.5px var(--mono);letter-spacing:.6px;color:#e0c08a;border:1px solid #5d4f2f;border-radius:3px;padding:3px 6px;white-space:nowrap}

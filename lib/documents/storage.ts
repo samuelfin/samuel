@@ -17,8 +17,13 @@ import { DOCUMENT_BUCKET } from "./validation";
  * definition of access, and this cannot drift away from it.
  */
 
-/** Long enough to open a large PDF, short enough that a leaked link is near worthless. */
-export const SIGNED_URL_TTL_SECONDS = 120;
+/**
+ * Ten minutes. Browser PDF viewers stream with range requests and keep fetching
+ * while the reader scrolls, so the link has to outlive the whole reading session,
+ * not just the first byte — at two minutes a large prospectus failed mid-load.
+ * Still short enough that a leaked URL is worth little, and every mint is logged.
+ */
+export const SIGNED_URL_TTL_SECONDS = 600;
 
 export type SignedDocument =
   | { ok: true; url: string; title: string; mimeType: string; expiresInSeconds: number }

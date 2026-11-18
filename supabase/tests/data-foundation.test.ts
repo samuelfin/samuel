@@ -44,6 +44,7 @@ describe("migrations", () => {
       "202611180004_platform_staff.sql",
       "202611180005_document_review.sql",
       "202611180006_record_uploaded_document.sql",
+      "202611180007_review_self_approval.sql",
     ]);
   });
 });
