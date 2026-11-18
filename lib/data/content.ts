@@ -38,9 +38,14 @@ export interface WorkspaceItem {
   name: string;
 }
 
+/**
+ * Editorial is not a dataset: it is SFI's own writing, published through the
+ * editorial workflow rather than ingested from a provider. Until that workflow
+ * exists, these report an empty desk rather than a missing feed.
+ */
 export async function getNews(): Promise<DataResult<NewsItem[]>> {
   await requireUser();
-  return notConnected("news.items");
+  return unavailable("editorial.news", "not_enabled", "No items have been published yet.");
 }
 
 export async function getCorporateActions(): Promise<DataResult<CorporateAction[]>> {
@@ -50,7 +55,7 @@ export async function getCorporateActions(): Promise<DataResult<CorporateAction[
 
 export async function getResearchReports(): Promise<DataResult<ResearchReport[]>> {
   await requireUser();
-  return notConnected("research.reports");
+  return unavailable("editorial.research", "not_enabled", "No research reports have been published yet.");
 }
 
 /** Watchlists, alerts and exports need per-user tables (Phase 5 / Phase 3). */

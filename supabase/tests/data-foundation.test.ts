@@ -40,6 +40,7 @@ describe("migrations", () => {
       "202611170001_initial_access_control.sql",
       "202611180001_data_foundation.sql",
       "202611180002_storage_object_policies.sql",
+      "202611180003_retire_sfi_editorial_datasets.sql",
     ]);
   });
 });
@@ -99,10 +100,23 @@ describe("dataset activation requires a licence basis", () => {
   });
 
   it("allows SFI-owned datasets without a licence", async () => {
-    await db.query("update public.datasets set is_active = true where id = 'research.reports'");
-    const { rows } = await db.query<{ is_active: boolean }>("select is_active from public.datasets where id = 'research.reports'");
+    // No SFI dataset is seeded any more: editorial sits beside this machinery.
+    // The rule still has to hold for SFI-derived data such as calculated metrics,
+    // so the test creates its own rather than relying on the seed.
+    await db.query(
+      "insert into public.datasets (id, provider_id, description, frequency) values ('sfi.derived_metrics', 'sfi', 'Test-only SFI-owned dataset', 'daily')",
+    );
+    await db.query("update public.datasets set is_active = true where id = 'sfi.derived_metrics'");
+    const { rows } = await db.query<{ is_active: boolean }>(
+      "select is_active from public.datasets where id = 'sfi.derived_metrics'",
+    );
     expect(rows[0].is_active).toBe(true);
-    await db.query("update public.datasets set is_active = false where id = 'research.reports'");
+    await db.query("delete from public.datasets where id = 'sfi.derived_metrics'");
+  });
+
+  it("no longer carries the retired SFI editorial datasets", async () => {
+    const { rows } = await db.query("select id from public.datasets where id in ('news.items', 'research.reports')");
+    expect(rows).toEqual([]);
   });
 });
 
@@ -267,7 +281,7 @@ describe("row-level security", () => {
   it("does not allow clients to write data, even administrators", async () => {
     await asUser(db, admin, async () => {
       await expectSqlError(db.query("insert into public.sectors (id, name) values ('test_sector', 'Test')"));
-      await expectSqlError(db.query("update public.datasets set is_active = true where id = 'news.items'"));
+      await expectSqlError(db.query("update public.datasets set is_active = true where id = 'equities.prices'"));
     });
   });
 });

@@ -24,7 +24,9 @@ describe("provider registry", () => {
     expect(notConnected("economy.observations", "cbn").message).toContain("CBN");
   });
 
-  it("describes SFI-owned datasets without a licensing gate", () => {
-    expect(notConnected("research.reports").message).toMatch(/no approved items/i);
+  it("describes SFI-owned sources without a licensing gate", () => {
+    // Reached through the provider override: no SFI dataset is registered, because
+    // editorial sits beside the dataset machinery rather than inside it.
+    expect(notConnected("companies.financials", "sfi").message).toMatch(/no approved items/i);
   });
 });

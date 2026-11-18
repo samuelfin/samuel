@@ -24,13 +24,34 @@ flowchart LR
 ### Modules
 
 - **Identity and tenancy:** users, roles, organisations, memberships, plan entitlements.
+- **Platform staff:** internal editorial and research roles, held separately from platform administration.
 - **Provider registry:** adapter configuration, credentials references, licence terms, allowed purposes and contact/renewal details.
-- **Ingestion:** scheduled and manual jobs, immutable source payload references, normalization, validation, deduplication and correction history.
-- **Financial domain:** companies, instruments, prices, fundamentals, economic observations, fixed-income terms/yields, corporate actions.
-- **Research/content:** documents, articles, reports, workflow states, source citations and exports.
+- **Ingestion:** manual document upload first, then scheduled collectors; immutable source payload references, normalization, validation, deduplication and correction history.
+- **Financial domain:** companies, instruments, prices, fundamentals, economic observations, fixed-income terms/yields.
+- **Announcements and corporate actions:** issuer and exchange communications, and the dated entitlements they create.
+- **Public offers:** IPOs and other offers, their structure, revisable timelines, official documents, disclosed risks and authorised participation channels.
+- **Editorial:** drafting, financial review, fact-checking, publication and correction, with citations into source documents.
 - **Intelligence:** retrieval, deterministic financial calculations, generated analyses, citations, safety policy and evaluation records.
 - **User services:** search, watchlists, alerts, notifications and usage limits.
 - **Administration:** approvals, audit logs, provider freshness and exception queues.
+
+### Delivery priority
+
+`docs/blueprints/` is the source of truth for scope. Its MVP is editorial-first: a
+market snapshot, selected company pages, company announcements, an IPO and
+public-offer area, investor education, basic watchlists and a limited, cited AI
+explainer. Build order follows that, not breadth of asset class.
+
+Fixed income and macroeconomic series are **frozen**: the schema, catalogues and
+routes already built are kept and maintained, but no new work is scheduled on them
+until the editorial, announcements and offers modules ship. Video and audio are
+deferred entirely.
+
+Editorial content sits **beside** the provider/dataset machinery rather than inside
+it. A dataset describes licensed third-party material arriving through ingestion;
+SFI's own writing is not ingested and has no provider licence, so it carries no
+`dataset_id` or `source_record_id`. It earns its authority by citing documents and
+approved observations, and by passing human review.
 
 ## Data lifecycle
 
@@ -61,12 +82,60 @@ Use PostgreSQL `numeric` for all financial values; avoid binary floating point. 
 | `financial_metric_definitions`, `derived_metrics` | Formula/version, period alignment, inputs, output and calculation timestamp |
 | `economic_series`, `economic_observations` | Indicator definition and dated/revisable observations |
 | `fixed_income_terms`, `auction_events`, `auction_results`, `yield_observations` | Issue terms, event dates, result type and yield basis clearly distinguished |
-| `corporate_actions` | Issuer/instrument, event type, announcement/effective dates and source |
+| `announcements` | Issuer or market communication: category, headline, announced time, price sensitivity, source document |
+| `corporate_actions` | Instrument, action type, progressive dates (declared, ex, closure, AGM, payment), per-share amount and withholding, ratio for bonus/rights/splits |
+| `public_offers` | Issuer, offer and security type, status, fixed price or book-build range, units, minimum application, use of proceeds |
+| `public_offer_milestones` | Dated opening, closing, extension, allotment and listing events; revisable, each change a new version |
+| `public_offer_documents` | Offer to document, with the document's role (prospectus, abridged particulars, exchange notice, regulator approval, allotment) |
+| `public_offer_risks` | Risk category and summary **as disclosed**, resolving to `document_id` and `source_page` |
+| `public_offer_participation_channels` | Authorised channel, type, link and the reviewer who verified it; SFI never collects funds |
 | `documents`, `document_extractions`, `document_chunks` | Private object pointer, rights, extracted text/table, page references, review state and reviewer |
-| `news_items`, `research_reports`, `citations` | Source link, author, publication and approval status; citations resolve to source record/document page |
+| `document_review_events` | Append-only document review history: actor, state transition and reason |
+| `platform_staff` | Internal editorial and research roles, separate from `platform_admins` |
+| `editorial_items`, `editorial_revisions` | Article, explainer, briefing or glossary entry; workflow state, distinct author/reviewer/fact-checker/publisher, AI provenance, append-only bodies |
+| `editorial_citations` | Claim to supporting document page or approved observation |
+| `editorial_transitions` | Append-only editorial workflow audit trail |
 | `watchlists`, `watchlist_items`, `alerts`, `notifications` | Owner/tenant, rule, delivery state and history |
 | `ai_conversations`, `ai_messages`, `ai_citations`, `ai_runs` | User/tenant, model/prompt version, retrieved evidence, output, cost and evaluation status |
 | `audit_logs`, `api_keys`, `usage_records` | Actor, action, target, request metadata and usage/entitlement accounting |
+
+### Editorial workflow
+
+States: `draft` → `in_financial_review` → `in_fact_check` → `approved` → `published`,
+with `published` → `corrected` and any state → `withdrawn`. Transitions are enforced
+by trigger, not by application code, and every transition is recorded.
+
+Three rules carry the weight:
+
+1. **Separation of duties.** The financial reviewer and the fact-checker must each
+   be someone other than the author. Review that an author can perform on their own
+   work is not review.
+2. **Citations before publication.** Publishing requires at least one citation on
+   the current revision, resolving to a document page or an approved observation.
+3. **Named human reviewer for AI-assisted work.** Where `ai_assisted` is set, a
+   human reviewer must be recorded. This is what mechanically enforces the rule that
+   AI-generated numerical claims and investment conclusions are never published
+   without analyst review.
+
+Corrections after first publication require a reason and retain the previous
+revision, matching how observation history is treated. Readers see only `published`
+and `corrected` items; staff see the queue.
+
+### Ingestion sequencing
+
+Ingestion arrives in two stages, deliberately in this order:
+
+1. **Manual document upload with analyst review.** A staff member uploads an
+   official document; the server computes its checksum, stores it in private object
+   storage and records an `upload` ingestion job and a source record. Nothing is
+   visible to readers until a reviewer approves it. This proves the review path and
+   the provenance chain with no external dependency.
+2. **Automated collectors, as a separate Python worker.** Per the blueprints'
+   stack, a standalone service detects, downloads, classifies and extracts. It
+   writes only ingestion jobs, source records, pending documents and extractions —
+   never an approved row — and connects through a dedicated insert-only database
+   role rather than the service key. Public sources (CBN, NBS) come first; NGX
+   datasets cannot be activated until a display licence is recorded.
 
 ### Integrity and indexing
 
@@ -80,7 +149,11 @@ Use PostgreSQL `numeric` for all financial values; avoid binary floating point. 
 
 ## API boundaries
 
-Versioned REST endpoints should return typed domain records, not provider payloads. Example groups: `/v1/markets`, `/v1/companies`, `/v1/economy`, `/v1/fixed-income`, `/v1/news`, `/v1/research`, `/v1/search`, `/v1/assistant`, `/v1/watchlists`, `/v1/admin/providers`.
+Versioned REST endpoints should return typed domain records, not provider payloads. Example groups: `/v1/markets`, `/v1/companies`, `/v1/announcements`, `/v1/offers`, `/v1/editorial`, `/v1/education`, `/v1/economy`, `/v1/fixed-income`, `/v1/search`, `/v1/assistant`, `/v1/watchlists`, `/v1/admin/documents`, `/v1/admin/providers`.
+
+Source documents are never served from the application origin. A reader is given a
+short-lived signed URL minted server-side for a specific object; the storage bucket
+is closed to every client role.
 
 Provider adapters implement a common interface such as `fetch(cursor, window)`, `normalize(record)`, `validate(record)` and `rights(product, use)`. Secrets are injected server-side from a secret manager/environment and never serialized into frontend bundles or logs.
 

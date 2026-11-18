@@ -67,8 +67,10 @@ export const DATASETS = {
   "fixed_income.instruments": "dmo",
   "fixed_income.auctions": "dmo",
   "fixed_income.yields": "fmdq",
-  "news.items": "sfi",
-  "research.reports": "sfi",
+  // SFI's own editorial and research are deliberately absent. They are not
+  // ingested from a provider and hold no licence, so they are not datasets; they
+  // live beside this registry and earn authority by citing documents. See
+  // docs/ARCHITECTURE_AND_DATA_MODEL.md, "Delivery priority".
 } as const satisfies Record<string, ProviderId>;
 
 export type DatasetId = keyof typeof DATASETS;
