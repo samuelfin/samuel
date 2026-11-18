@@ -82,10 +82,18 @@ export async function asUser<T>(db: PGlite, userId: string, fn: () => Promise<T>
   }
 }
 
-export async function createUser(db: PGlite, opts: { admin?: boolean } = {}): Promise<string> {
+export type StaffRole = "editor" | "analyst" | "fact_checker" | "publisher";
+
+export async function createUser(
+  db: PGlite,
+  opts: { admin?: boolean; staff?: StaffRole[] } = {},
+): Promise<string> {
   const id = randomUUID();
   await db.query("insert into auth.users (id, email) values ($1, $2)", [id, `${id.slice(0, 8)}@example.test`]);
   if (opts.admin) await db.query("insert into public.platform_admins (user_id, granted_by) values ($1, $1)", [id]);
+  for (const role of opts.staff ?? []) {
+    await db.query("insert into public.platform_staff (user_id, role, granted_by) values ($1, $2, $1)", [id, role]);
+  }
   return id;
 }
 
