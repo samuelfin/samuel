@@ -7,6 +7,11 @@ next-env.d.ts
 *.tsbuildinfo
 .env*
 !.env.example
+
+# Source blueprints are kept as Markdown in docs/blueprints/; the .docx originals
+# are not tracked. Convert with pandoc rather than committing the binaries.
+*.docx
+
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*

@@ -7,3 +7,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Source of truth
+
+`docs/blueprints/` is the product and architecture source of truth. Consult it before changing product scope, the data model or architecture; where it and the code disagree, the blueprints are authoritative.
