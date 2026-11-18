@@ -1,21 +1,20 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { signOut } from "@/app/auth/actions";
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { requirePlatformAdmin } from "@/lib/supabase/require-platform-admin";
+import { connectedDatasetCount } from "@/lib/providers/registry";
 
 export default async function AdminPage() {
-  if (!isSupabaseConfigured()) redirect("/login?setup=1");
+  const actor = await requirePlatformAdmin();
+  const userId = actor.userId;
+  const displayName = actor.name;
 
+  // Real health checks rather than static labels.
   const supabase = await createClient();
-  const { data: claims } = await supabase.auth.getClaims();
-  if (!claims?.claims?.sub) redirect("/login");
-
-  const { data: isAdmin, error } = await supabase.rpc("is_platform_admin");
-  if (error || !isAdmin) redirect("/");
-
-  const userId = claims.claims.sub;
-  const displayName = typeof claims.claims.name === "string" ? claims.claims.name : "SFI Administrator";
+  const { error: dbError } = await supabase.from("profiles").select("id", { head: true, count: "exact" }).limit(1);
+  const databaseReady = !dbError;
+  const secretConfigured = Boolean(process.env.SUPABASE_SECRET_KEY);
+  const feeds = connectedDatasetCount();
 
   return (
     <main className="admin-shell">
@@ -36,9 +35,10 @@ export default async function AdminPage() {
           <div className="admin-title-row"><div><div className="admin-eyebrow">PLATFORM OPERATIONS · SFI</div><h1>Administration<span>.</span></h1><p>Manage access, source readiness and platform controls.</p></div><span className="admin-role-pill">PLATFORM ADMIN</span></div>
           <div className="admin-setup-callout"><span className="admin-info">i</span><div><strong>Supabase access control is active for this workspace.</strong><p>Invite teammates and manage platform access. Market data remains unavailable until provider terms and credentials are configured.</p></div><Link href="/admin/users">Manage users <span>→</span></Link></div>
           <div className="admin-status-grid">
-            <article className="admin-status-card"><span className="admin-card-icon">◉</span><div><small>AUTHENTICATION</small><strong>Supabase Auth</strong><span className="connection-state"><i /> Configured by environment</span></div></article>
-            <article className="admin-status-card"><span className="admin-card-icon">▤</span><div><small>DATABASE</small><strong>PostgreSQL</strong><span className="connection-state"><i /> Migration ready</span></div></article>
-            <article className="admin-status-card"><span className="admin-card-icon">◈</span><div><small>MARKET DATA</small><strong>No providers connected</strong><span className="connection-state muted"><i /> No licensed feed configured</span></div></article>
+            <article className="admin-status-card"><span className="admin-card-icon">◉</span><div><small>AUTHENTICATION</small><strong>Supabase Auth</strong><span className="connection-state"><i /> Session verified for this request</span></div></article>
+            <article className="admin-status-card"><span className="admin-card-icon">▤</span><div><small>DATABASE</small><strong>PostgreSQL</strong><span className={`connection-state${databaseReady ? "" : " muted"}`}><i /> {databaseReady ? "Reachable · access-control schema present" : "Check failed — apply the Phase 1 migration"}</span></div></article>
+            <article className="admin-status-card"><span className="admin-card-icon">⚿</span><div><small>SERVER SECRET</small><strong>{secretConfigured ? "Configured" : "Missing"}</strong><span className={`connection-state${secretConfigured ? "" : " muted"}`}><i /> {secretConfigured ? "Invitations and role changes enabled" : "Set SUPABASE_SECRET_KEY to enable invitations"}</span></div></article>
+            <article className="admin-status-card"><span className="admin-card-icon">◈</span><div><small>MARKET DATA</small><strong>{feeds ? `${feeds} datasets connected` : "No providers connected"}</strong><span className={`connection-state${feeds ? "" : " muted"}`}><i /> {feeds ? "Licensed feeds active" : "No licensed feed configured"}</span></div></article>
           </div>
           <div className="admin-panels">
             <section className="admin-panel"><div className="admin-panel-heading"><div><span>ACCESS CONTROL</span><h2>Platform roles</h2></div><span className="admin-count">3 ROLES</span></div><div className="role-list"><div className="role-row"><span className="role-symbol owner">A</span><div><strong>Platform administrator</strong><p>System-level controls and approvals</p></div><span className="role-scope">PLATFORM</span></div><div className="role-row"><span className="role-symbol analyst">R</span><div><strong>Research analyst</strong><p>Research and data review permissions</p></div><span className="role-scope">WORKSPACE</span></div><div className="role-row"><span className="role-symbol viewer">V</span><div><strong>Viewer</strong><p>Read-only access to permitted content</p></div><span className="role-scope">WORKSPACE</span></div></div><p className="panel-note">Role enforcement is backed by PostgreSQL row-level security policies.</p></section>

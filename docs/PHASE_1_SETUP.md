@@ -4,7 +4,8 @@
 
 1. Copy `.env.example` to `.env.local` and set the Supabase URL, publishable key, app URL and server-only secret key.
 2. Install the committed lockfile with `npm ci`, then start with `npm run dev`.
-3. Open `http://localhost:3000`. The app redirects to sign-in; without Supabase settings, the sign-in page shows setup instructions.
+3. Open `http://localhost:3000`. Without Supabase settings, `npm run dev` opens the terminal in **local preview** mode: no sign-in, a "Local preview" label in the top bar and status bar, no administration access. This exists only when `NODE_ENV=development` and Supabase is unconfigured; production builds redirect to the sign-in setup screen instead. Once `.env.local` is filled in, the app requires sign-in.
+4. Run `npm run check` (lint, typecheck, unit tests) before committing. CI runs the same checks plus `npm run build` on every push and pull request (`.github/workflows/ci.yml`).
 
 If Node reports a certificate-chain error on this Windows setup, use the system certificate store for that PowerShell session: `$env:NODE_USE_SYSTEM_CA = '1'; npm ci`. Node 24.6+ supports this setting; it does not disable TLS checks or change global npm configuration.
 
@@ -38,4 +39,14 @@ The migration has no client write policy for platform-admin assignments and no a
 
 ## Current boundary
 
-Authentication, route guards, session refresh, schema, row-level security, email invitations, platform-admin controls and the administration shell are implemented. This workspace does not provision an SFI-owned Supabase project or populate `.env.local`; SFI must create the project, run the migration and bootstrap its first platform administrator. Market data, organisation-level role management and production email are not part of this milestone.
+Implemented:
+
+- Authentication, session refresh, an optimistic redirect in `proxy.ts`, and server-side session checks in every data service (`lib/auth/session.ts`). Auth-gated routes are always request-rendered.
+- Schema, row-level security, email invitations, platform-admin controls, audit log and the administration shell, with live health checks (database reachability, server secret, connected datasets).
+- Dark terminal design system, persistent shell, command bar (Ctrl/⌘+K, function codes such as `ECO`), and a route per module with loading, error, empty and unavailable states.
+- Typed data layer and provider registry. All datasets currently return "No source connected" with the planned provider and its licensing gate.
+- Pinned dependencies, unit tests (Vitest) and CI.
+
+Not yet done (remaining Phase 1 items): staging environment, error monitoring, backup/restore procedure, organisation-level role management UI, production SMTP. This workspace does not provision an SFI-owned Supabase project or populate `.env.local`; SFI must create the project, run the migration and bootstrap its first platform administrator.
+
+Known dev-tooling advisory: `npm audit` reports a ReDoS advisory in `picomatch` (used by ESLint/Vitest glob matching) with no fixed version available. It affects development tooling only, processes only patterns written in this repository, and is not part of the production bundle. Re-check when a patched release ships.
