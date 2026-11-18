@@ -28,6 +28,29 @@ const SUPABASE_STUB = `
     select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
   $$;
   grant execute on function auth.uid() to anon, authenticated, service_role;
+
+  create schema storage;
+  grant usage on schema storage to anon, authenticated, service_role;
+  create table storage.buckets (
+    id text primary key,
+    name text not null,
+    public boolean not null default false,
+    file_size_limit bigint,
+    allowed_mime_types text[],
+    created_at timestamptz not null default now()
+  );
+  create table storage.objects (
+    id uuid primary key default gen_random_uuid(),
+    bucket_id text not null references storage.buckets (id),
+    name text not null,
+    owner uuid,
+    created_at timestamptz not null default now()
+  );
+  -- Table privileges are granted on purpose. The storage policies are supposed to
+  -- deny the document bucket through row-level security, so the tests must fail for
+  -- that reason rather than for a missing GRANT.
+  grant select, insert, update, delete on storage.objects to anon, authenticated;
+  grant select on storage.buckets to anon, authenticated;
 `;
 
 export function migrationFiles(): string[] {

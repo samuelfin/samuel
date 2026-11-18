@@ -32,3 +32,27 @@ jobs:
       # The build runs without Supabase settings on purpose: auth-gated routes must stay
       # request-rendered, so no credentials are needed (or exposed) at build time.
       - run: npm run build
+
+  security:
+    name: Dependency audit and secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # Fails on high and critical advisories. A new upstream advisory can turn this
+      # red without any change here; that is the intended signal, not a flake.
+      - name: Dependency audit
+        run: npm run audit:deps
+
+      # Dependency-free scan tuned to this stack's credentials, above all the
+      # Supabase secret key. See scripts/scan-secrets.mjs.
+      - name: Secret scan
+        run: npm run scan:secrets

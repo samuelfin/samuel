@@ -36,7 +36,16 @@ Without `.env.local`, `npm run dev` opens the terminal in **local preview** mode
 | `lib/data/` | Server-only data services used by pages; each verifies the session |
 | `lib/catalog/` | Reference metadata only (modules, indicators, indices, sectors, rate concepts, ratio definitions) — no values |
 | `lib/auth/session.ts` | Session data-access layer (`requireUser`, `getSessionUser`) |
+| `lib/security/csp.ts` | Content Security Policy and the per-request nonce |
 | `supabase/migrations/` | Database schema history |
+| `scripts/scan-secrets.mjs` | Dependency-free secret scan, run by CI and `npm run check` |
+
+## Security posture
+
+- **Response headers.** A nonce-based Content Security Policy is set per request in `proxy.ts`; `script-src` carries no `'unsafe-inline'`, and `'strict-dynamic'` means every script Next.js renders is nonce-bound. This requires request rendering, which the terminal already does because each route checks the session. HSTS, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Cross-Origin-Opener-Policy` and `Permissions-Policy` are set in `next.config.ts` so they also cover static assets.
+- **Row-level security.** Deny by default on every table. Clients read only approved rows from datasets that are active, meaning licensed for display; licence terms and pipeline internals are platform-admin only; all writes go through `service_role`.
+- **Document storage.** The `source-documents` bucket is private, and a restrictive policy excludes it from every client role, so licensed documents are reachable only through a short-lived signed URL minted server-side. Restrictive policies are ANDed with permissive ones, so a later well-meaning "let users read documents" policy cannot open it.
+- **Supply chain.** CI fails on high or critical `npm audit` advisories and on any secret the scan recognises. Run both locally with `npm run check`.
 
 ## Product and engineering documents
 

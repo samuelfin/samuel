@@ -36,7 +36,11 @@ async function createActiveLicence(provider: string) {
 
 describe("migrations", () => {
   it("apply cleanly in order", () => {
-    expect(migrationFiles()).toEqual(["202611170001_initial_access_control.sql", "202611180001_data_foundation.sql"]);
+    expect(migrationFiles()).toEqual([
+      "202611170001_initial_access_control.sql",
+      "202611180001_data_foundation.sql",
+      "202611180002_storage_object_policies.sql",
+    ]);
   });
 });
 

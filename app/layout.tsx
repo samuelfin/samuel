@@ -19,6 +19,15 @@ export const viewport: Viewport = {
   colorScheme: "dark",
 };
 
+/**
+ * Required by the nonce-based Content Security Policy in `proxy.ts`. A nonce only
+ * exists for a request, so a prerendered page would ship script tags without one and
+ * `strict-dynamic` would block them — silently breaking /reset-password and the 404
+ * page. Every other route is already request-rendered because it checks the session,
+ * so this gives up no static output.
+ */
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en-NG" className={`${sans.variable} ${mono.variable} ${head.variable}`}>

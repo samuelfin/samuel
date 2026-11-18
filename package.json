@@ -13,7 +13,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run lint && npm run typecheck && npm run test"
+    "scan:secrets": "node scripts/scan-secrets.mjs",
+    "audit:deps": "npm audit --audit-level=high",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run scan:secrets"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",
