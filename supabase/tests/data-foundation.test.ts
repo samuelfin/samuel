@@ -43,6 +43,7 @@ describe("migrations", () => {
       "202611180003_retire_sfi_editorial_datasets.sql",
       "202611180004_platform_staff.sql",
       "202611180005_document_review.sql",
+      "202611180006_record_uploaded_document.sql",
     ]);
   });
 });
