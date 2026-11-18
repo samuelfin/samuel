@@ -1,0 +1,90 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { createHash, randomUUID } from "node:crypto";
+import { PGlite } from "@electric-sql/pglite";
+
+/**
+ * In-process PostgreSQL (PGlite) with the minimum of Supabase the migrations rely on:
+ * the anon/authenticated/service_role roles, an `auth.users` table and `auth.uid()`
+ * reading the JWT subject from a session setting. Every migration is then applied in
+ * filename order, exactly as Supabase would.
+ */
+
+const MIGRATIONS_DIR = fileURLToPath(new URL("../migrations/", import.meta.url));
+
+const SUPABASE_STUB = `
+  create role anon nologin;
+  create role authenticated nologin;
+  create role service_role nologin bypassrls;
+  create schema auth;
+  grant usage on schema auth to anon, authenticated, service_role;
+  grant usage on schema public to anon, authenticated, service_role;
+  create table auth.users (
+    id uuid primary key,
+    email text,
+    raw_user_meta_data jsonb not null default '{}'::jsonb
+  );
+  create function auth.uid() returns uuid language sql stable as $$
+    select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
+  $$;
+  grant execute on function auth.uid() to anon, authenticated, service_role;
+`;
+
+export function migrationFiles(): string[] {
+  return readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
+}
+
+export async function createTestDatabase(): Promise<PGlite> {
+  const db = new PGlite();
+  await db.exec(SUPABASE_STUB);
+  for (const file of migrationFiles()) {
+    try {
+      await db.exec(readFileSync(`${MIGRATIONS_DIR}${file}`, "utf8"));
+    } catch (error) {
+      throw new Error(`Migration ${file} failed: ${(error as Error).message}`);
+    }
+  }
+  return db;
+}
+
+/** Run `fn` as a signed-in user (role `authenticated`, auth.uid() = userId), so RLS applies. */
+export async function asUser<T>(db: PGlite, userId: string, fn: () => Promise<T>): Promise<T> {
+  await db.query("select set_config('request.jwt.claim.sub', $1, false)", [userId]);
+  await db.exec("set role authenticated");
+  try {
+    return await fn();
+  } finally {
+    await db.exec("reset role");
+    await db.query("select set_config('request.jwt.claim.sub', '', false)");
+  }
+}
+
+export async function createUser(db: PGlite, opts: { admin?: boolean } = {}): Promise<string> {
+  const id = randomUUID();
+  await db.query("insert into auth.users (id, email) values ($1, $2)", [id, `${id.slice(0, 8)}@example.test`]);
+  if (opts.admin) await db.query("insert into public.platform_admins (user_id, granted_by) values ($1, $1)", [id]);
+  return id;
+}
+
+export function sha256(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+
+/** Insert a source record for a dataset and return its id. */
+export async function createSourceRecord(db: PGlite, dataset: string, content: string = randomUUID()): Promise<string> {
+  const { rows } = await db.query<{ id: string }>(
+    "insert into public.source_records (dataset_id, retrieved_at, content_sha256, source_uri) values ($1, now(), $2, 'https://example.test/release') returning id",
+    [dataset, sha256(content)],
+  );
+  return rows[0].id;
+}
+
+/** Errors from PGlite carry the SQLSTATE in `code`. */
+export async function expectSqlError(promise: Promise<unknown>): Promise<{ code?: string; message: string }> {
+  try {
+    await promise;
+  } catch (error) {
+    return error as { code?: string; message: string };
+  }
+  throw new Error("Expected the statement to fail, but it succeeded");
+}
