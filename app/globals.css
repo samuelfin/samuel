@@ -229,3 +229,28 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #d8b9
 .admin-footer{font-size:7px}
 }
 
+
+/* Document review desk */
+.review-list{display:flex;flex-direction:column}
+.review-row{display:flex;gap:12px;justify-content:space-between;align-items:flex-start;padding:12px 14px;border-bottom:1px solid #20282e}
+.review-row:last-child{border-bottom:0}
+.review-row-main{min-width:0}
+.review-row-main strong{display:block;font-size:12.5px;color:#e6edf0;margin-bottom:3px;overflow-wrap:anywhere}
+.review-row-main p{margin:0;font-size:11px;color:#8b979d;text-transform:capitalize}
+.review-row-meta{margin-top:3px!important;font:9.5px var(--mono)!important;color:#6d787e!important;text-transform:none!important}
+.review-row-meta a{color:#9fb0b7}
+.review-row-actions{display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0}
+.review-decision,.review-open{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:flex-end;margin:0}
+.review-decision label{display:flex;flex-direction:column;gap:3px;font:9px var(--mono);color:#78848a;text-align:left;width:100%}
+.review-decision input{background:#0b0f13;border:1px solid #2b353c;border-radius:3px;color:#e6edf0;padding:5px 7px;font-size:11px;width:100%}
+.review-decision button,.review-open button,.review-open a{background:#1a2228;border:1px solid #2f3a41;border-radius:3px;color:#cfd9de;padding:5px 10px;font:10px var(--mono);letter-spacing:.4px;cursor:pointer;text-decoration:none}
+.review-decision button[value=approved]{border-color:#2f5d44;color:#8fd3ab}
+.review-decision button[value=rejected]{border-color:#5d3434;color:#e0a0a0}
+.review-open a{border-color:#2f4a5d;color:#9ec8e0}
+.review-decision button:disabled,.review-open button:disabled{opacity:.5;cursor:not-allowed}
+.review-decision .auth-message,.review-open .auth-message{width:100%;text-align:right;font-size:10px;margin:2px 0 0}
+@media (max-width:900px){
+.review-row{flex-direction:column}
+.review-row-actions{align-items:stretch;width:100%}
+.review-decision,.review-open{justify-content:flex-start}
+}

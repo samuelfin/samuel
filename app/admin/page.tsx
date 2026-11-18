@@ -24,8 +24,8 @@ export default async function AdminPage() {
         <div className="admin-nav-label">CONTROL ROOM</div>
         <Link className="admin-nav active" href="/admin"><i>▦</i> Overview</Link>
         <Link className="admin-nav" href="/admin/users"><i>♙</i> User management</Link>
+        <Link className="admin-nav" href="/admin/documents"><i>▤</i> Document review</Link>
         <a className="admin-nav disabled" href="#data" aria-disabled="true"><i>◈</i> Data providers <small>Later</small></a>
-        <a className="admin-nav disabled" href="#research" aria-disabled="true"><i>▤</i> Research review <small>Later</small></a>
         <a className="admin-nav disabled" href="#system" aria-disabled="true"><i>⚙</i> System settings <small>Later</small></a>
         <div className="admin-sidebar-foot"><span className="secure-indicator" /> ADMIN SESSION ACTIVE<br /><small>Access is role-verified server-side.</small></div>
       </aside>
