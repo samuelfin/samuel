@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { type SubmitEvent, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -12,7 +13,7 @@ export default function LoginForm({ configured, setupRequired }: { configured: b
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!configured) return;
     setBusy(true);
@@ -53,7 +54,7 @@ export default function LoginForm({ configured, setupRequired }: { configured: b
 
   return (
     <main className="auth-page">
-      <section className="auth-brand"><a className="brand" href="/" aria-label="Samuel Terminal"><span className="brand-mark">S<span>•</span></span><span className="brand-copy"><strong>SAMUEL</strong><small>FINANCIAL INTELLIGENCE</small></span></a></section>
+      <section className="auth-brand"><Link className="brand" href="/" aria-label="Samuel Terminal"><span className="brand-mark">S<span>•</span></span><span className="brand-copy"><strong>SAMUEL</strong><small>FINANCIAL INTELLIGENCE</small></span></Link></section>
       <section className="auth-content">
         <div className="auth-card">
           <div className="auth-eyebrow">SAMUEL TERMINAL <span /> SECURE WORKSPACE</div>
