@@ -1,0 +1,13 @@
+import type { Metadata } from "next";
+import "./globals.css";
+export const metadata: Metadata = {
+  title: "Samuel Terminal | SFI",
+  description: "Nigerian financial market intelligence by Samuel Financial Intelligence.",
+};
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}
