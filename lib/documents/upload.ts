@@ -4,6 +4,7 @@ import { requireStaffRole } from "@/lib/auth/staff";
 import {
   DOCUMENT_BUCKET,
   isAllowedMimeType,
+  normalizeSourceUri,
   storagePathFor,
   validateUpload,
   type DocumentKind,
@@ -98,7 +99,7 @@ export async function uploadSourceDocument(input: UploadInput): Promise<UploadOu
     p_size_bytes: sizeBytes,
     p_licence_class: input.licenceClass,
     p_company_id: input.companyId ?? null,
-    p_source_uri: input.sourceUri?.trim() || null,
+    p_source_uri: normalizeSourceUri(input.sourceUri),
     p_published_at: input.publishedAt || null,
     p_period_end: input.periodEnd || null,
   });
@@ -106,10 +107,19 @@ export async function uploadSourceDocument(input: UploadInput): Promise<UploadOu
   if (error) {
     // 23505 is documents.sha256 or source_records (dataset_id, content_sha256):
     // the same bytes are already recorded, which is a duplicate, not a failure of
-    // the upload. The stored object is shared, so there is nothing to clean up.
+    // the upload. The object is shared with the existing document, so it stays.
     if (error.code === "23505") {
       return { ok: false, error: "That document is already in the library." };
     }
+
+    // Any other failure leaves no row pointing at the object. Nothing would ever
+    // reference it again, and the bucket is not listable, so it could never be
+    // found or reclaimed — remove it. Only safe when this call stored it: if the
+    // bytes were already there, another document owns them.
+    if (!alreadyStored) {
+      await admin.storage.from(DOCUMENT_BUCKET).remove([storagePath]);
+    }
+
     if (error.code === "42501") {
       return { ok: false, error: "You may not upload documents." };
     }

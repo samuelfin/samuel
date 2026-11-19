@@ -20,6 +20,13 @@ export interface ActionState {
   signedUrl?: string;
 }
 
+/**
+ * A hand-uploaded document is an issuer document in the issuer-documents dataset.
+ * Fixed here rather than submitted, so provenance cannot be chosen by the poster.
+ */
+const MANUAL_UPLOAD_PROVIDER = "issuer_ir";
+const MANUAL_UPLOAD_DATASET = "companies.documents";
+
 function text(form: FormData, field: string): string {
   const value = form.get(field);
   return typeof value === "string" ? value.trim() : "";
@@ -38,8 +45,12 @@ export async function uploadDocumentAction(_prev: ActionState, form: FormData): 
     title: text(form, "title"),
     kind: text(form, "kind"),
     licenceClass: text(form, "licenceClass"),
-    providerId: text(form, "providerId") || "issuer_ir",
-    datasetId: text(form, "datasetId") || "companies.documents",
+    // Deliberately not taken from the form. The desk offers no choice of source,
+    // and reading these from FormData would let a staff member attribute any PDF
+    // to a licensed provider and corrupt the provenance trail. When more sources
+    // exist this becomes a selector validated against the provider registry.
+    providerId: MANUAL_UPLOAD_PROVIDER,
+    datasetId: MANUAL_UPLOAD_DATASET,
     sourceUri: text(form, "sourceUri") || null,
     publishedAt: text(form, "publishedAt") || null,
     periodEnd: text(form, "periodEnd") || null,

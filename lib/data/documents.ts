@@ -5,7 +5,17 @@ import { createClient } from "@/lib/supabase/server";
 /**
  * The document review queue. Read through the staff member's own session, so
  * row-level security decides what is visible rather than this module.
+ *
+ * These throw rather than returning an empty list on error. An empty queue and a
+ * broken query look identical in the interface — "Nothing is waiting" — and the
+ * failure mode is that licensed documents sit unpublished while the desk believes
+ * it is up to date. A visible error is the lesser harm; app/admin/error.tsx
+ * renders it.
  */
+
+function reportFailure(what: string, error: { message?: string } | null): never {
+  throw new Error(`Could not load ${what}: ${error?.message ?? "unknown error"}`);
+}
 
 export interface ReviewQueueItem {
   id: string;
@@ -78,7 +88,7 @@ async function selfApprovedIds(
     .eq("self_approved", true)
     .in("document_id", documentIds);
 
-  if (error || !data) return new Set();
+  if (error || !data) reportFailure("self-approval flags", error);
   return new Set(data.map((row) => row.document_id as string));
 }
 
@@ -93,7 +103,7 @@ export async function listReviewQueue(): Promise<ReviewQueueItem[]> {
     .order("created_at", { ascending: true })
     .limit(100);
 
-  if (error || !data) return [];
+  if (error || !data) reportFailure("the review queue", error);
   // Nothing pending has been approved yet, so no event lookup is needed.
   return (data as DocumentRow[]).map((row) => toItem(row, new Set()));
 }
@@ -109,7 +119,7 @@ export async function listRecentlyReviewed(): Promise<ReviewQueueItem[]> {
     .order("reviewed_at", { ascending: false })
     .limit(20);
 
-  if (error || !data) return [];
+  if (error || !data) reportFailure("recently reviewed documents", error);
   const rows = data as DocumentRow[];
   const selfApproved = await selfApprovedIds(supabase, rows.map((row) => row.id));
   return rows.map((row) => toItem(row, selfApproved));
@@ -124,7 +134,7 @@ export async function listReviewHistory(documentId: string): Promise<ReviewEvent
     .eq("document_id", documentId)
     .order("created_at", { ascending: false });
 
-  if (error || !data) return [];
+  if (error || !data) reportFailure("the review history", error);
   return data.map((row) => ({
     toStatus: row.to_status as string,
     reason: (row.reason as string | null) ?? null,

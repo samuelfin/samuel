@@ -66,12 +66,18 @@ export async function createSignedDocumentUrl(documentId: string): Promise<Signe
   }
 
   // Licensed material: record who opened what. The blueprints require an audit
-  // trail over source documents, and this is the only path to the bytes.
-  await admin.from("audit_logs").insert({
+  // trail over source documents, and this is the only path to the bytes, so an
+  // unrecorded access must not happen — if the log fails, the link is withheld
+  // rather than handed out untracked.
+  const { error: auditError } = await admin.from("audit_logs").insert({
     actor_user_id: user.id,
     action: "document.download",
     details: { document_id: document.id },
   });
+
+  if (auditError) {
+    return { ok: false, error: "That document could not be opened. Try again shortly." };
+  }
 
   return {
     ok: true,

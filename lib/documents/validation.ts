@@ -97,20 +97,32 @@ export function validateUpload(candidate: UploadCandidate): ValidationResult {
 
   // documents.source_uri is constrained to http(s); reject anything else early and
   // with a readable message rather than letting a check constraint fail.
-  const uri = candidate.sourceUri?.trim();
-  if (uri) {
-    let parsed: URL;
-    try {
-      parsed = new URL(uri);
-    } catch {
-      return { ok: false, error: "The source link must be a full http or https URL." };
-    }
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return { ok: false, error: "The source link must be a full http or https URL." };
-    }
+  if (candidate.sourceUri?.trim() && normalizeSourceUri(candidate.sourceUri) === null) {
+    return { ok: false, error: "The source link must be a full http or https URL." };
   }
 
   return { ok: true };
+}
+
+/**
+ * The link as it should be stored, or null if it is not usable.
+ *
+ * `documents.source_uri` is checked against a case-sensitive `^https?://`, while
+ * `URL` lower-cases the scheme when parsing. Validating the parsed form but
+ * storing the raw string would let `HTTPS://…` pass here and then fail on insert
+ * — after the file had already been put in the bucket. Storing the normalised
+ * form keeps the two in agreement.
+ */
+export function normalizeSourceUri(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }
 
 /**

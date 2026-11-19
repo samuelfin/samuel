@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_DOCUMENT_BYTES,
   isAllowedMimeType,
+  normalizeSourceUri,
   storagePathFor,
   validateUpload,
 } from "./validation";
@@ -61,6 +62,37 @@ describe("validateUpload", () => {
     expect(validateUpload({ ...VALID, sourceUri: "javascript:alert(1)" }).ok).toBe(false);
     expect(validateUpload({ ...VALID, sourceUri: "file:///etc/passwd" }).ok).toBe(false);
     expect(validateUpload({ ...VALID, sourceUri: "issuer.test/report.pdf" }).ok).toBe(false);
+  });
+});
+
+describe("normalizeSourceUri", () => {
+  it("lower-cases the scheme so the stored value matches the column's check", () => {
+    // documents.source_uri is checked against a case-sensitive ^https?://, while
+    // URL parsing lower-cases the scheme. Storing the raw string let HTTPS:// pass
+    // validation and then fail on insert, after the file was already in the bucket.
+    expect(normalizeSourceUri("HTTPS://issuer.test/report.pdf")).toBe("https://issuer.test/report.pdf");
+    expect(normalizeSourceUri("HtTp://issuer.test/a")).toBe("http://issuer.test/a");
+  });
+
+  it("accepts an uppercase scheme through validateUpload too", () => {
+    expect(validateUpload({ ...VALID, sourceUri: "HTTPS://issuer.test/report.pdf" }).ok).toBe(true);
+  });
+
+  it("returns null for anything unusable", () => {
+    expect(normalizeSourceUri(null)).toBeNull();
+    expect(normalizeSourceUri("   ")).toBeNull();
+    expect(normalizeSourceUri("javascript:alert(1)")).toBeNull();
+    expect(normalizeSourceUri("JAVASCRIPT:alert(1)")).toBeNull();
+    expect(normalizeSourceUri("issuer.test/report.pdf")).toBeNull();
+  });
+
+  it("every normalised value satisfies the column's regex", () => {
+    const columnCheck = /^https?:\/\//;
+    for (const input of ["HTTPS://a.test/x", "http://b.test", "https://c.test/d?e=1#f"]) {
+      const normalised = normalizeSourceUri(input);
+      expect(normalised).not.toBeNull();
+      expect(columnCheck.test(normalised as string)).toBe(true);
+    }
   });
 });
 

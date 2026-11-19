@@ -21,7 +21,10 @@ export const getStaffRoles = cache(async (): Promise<StaffRole[]> => {
   if (!user || user.mode !== "authenticated") return [];
 
   const supabase = await createClient();
-  const { data, error } = await supabase.from("platform_staff").select("role");
+  // Scoped to this user explicitly. The policy also admits a platform admin to the
+  // whole roster, so without this filter an admin's own role list would be every
+  // staff member's roles — and anything gating on roles alone would be wrong.
+  const { data, error } = await supabase.from("platform_staff").select("role").eq("user_id", user.id);
   if (error || !data) return [];
   return data
     .map((row) => row.role as StaffRole)
