@@ -12,6 +12,13 @@ next-env.d.ts
 # are not tracked. Convert with pandoc rather than committing the binaries.
 *.docx
 
+# Supabase CLI scratch state: records which remote project this checkout is
+# pointed at. Local to the machine, and not something to share.
+supabase/.temp/
+
+# Per-developer agent settings. settings.json is shared; .local.json is not.
+.claude/settings.local.json
+
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
