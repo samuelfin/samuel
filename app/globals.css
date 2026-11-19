@@ -255,3 +255,17 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #d8b9
 .review-decision,.review-open{justify-content:flex-start}
 }
 .self-approved-flag{font:8.5px var(--mono);letter-spacing:.6px;color:#e0c08a;border:1px solid #5d4f2f;border-radius:3px;padding:3px 6px;white-space:nowrap}
+
+/* Announcement stories on the news feed */
+.story-flags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px}
+.flag{font:8.5px var(--mono);letter-spacing:.6px;border-radius:3px;padding:2px 5px;white-space:nowrap}
+.flag-plain{border:1px solid #2b353c;color:#8b979d}
+.flag-corrected{border:1px solid #5d4f2f;color:#e0c08a}
+.flag-withdrawn{border:1px solid #5d3434;color:#e0a0a0}
+.flag-sensitive{border:1px solid #2f4a5d;color:#9ec8e0}
+.story-note{margin:3px 0 0!important;font-size:10.5px!important;color:#9aa4a9!important}
+.story.is-withdrawn > a{text-decoration:line-through;opacity:.75}
+.auth-form textarea{background:#0b0f13;border:1px solid #2b353c;border-radius:4px;color:#e6edf0;padding:8px;font:12px var(--sans);resize:vertical;width:100%}
+.checkbox-row{flex-direction:row!important;align-items:center;gap:8px}
+.checkbox-row input{width:auto}
+.correct-link{background:#1a2228;border:1px solid #2f3a41;border-radius:3px;color:#cfd9de;padding:5px 10px;font:10px var(--mono);letter-spacing:.4px;text-decoration:none;white-space:nowrap}

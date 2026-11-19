@@ -19,6 +19,12 @@ supabase/.temp/
 # Per-developer agent settings. settings.json is shared; .local.json is not.
 .claude/settings.local.json
 
+# Local MCP server configuration: machine-specific, and may name local paths.
+.mcp.json
+
+# Local agent tool state.
+.codex/
+
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*

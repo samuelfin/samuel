@@ -3,7 +3,8 @@ import Link from "next/link";
 import { Change, DataTable, MetricTile, PageHeader, Panel, PanelGrid, StatusBadge, Unavailable } from "@/components/terminal/ui";
 import { getIndexQuotes, getMarketActivity, getMarketBreadth, getMovers, getSectorPerformance, type EquityQuote } from "@/lib/data/markets";
 import { getIndicatorRows } from "@/lib/data/economy";
-import { getAiAssistantStatus, getNews, getWorkspaceItems } from "@/lib/data/content";
+import { getAiAssistantStatus, getWorkspaceItems } from "@/lib/data/content";
+import { listPublishedAnnouncements } from "@/lib/data/announcements";
 import { HEADLINE_INDICATOR_IDS, unitLabel } from "@/lib/catalog/indicators";
 import { NGX_SECTORS } from "@/lib/catalog/markets";
 import { ACCESS_LABEL, DATASETS, PROVIDERS, RIGHTS_LABEL, isConnected, type DatasetId } from "@/lib/providers/registry";
@@ -42,7 +43,10 @@ export default async function OverviewPage() {
     getMovers("active"),
     getSectorPerformance(),
     getIndicatorRows(HEADLINE_INDICATOR_IDS),
-    getNews(),
+    // One panel must not take the whole dashboard down. The loader throws so a
+    // broken query is never mistaken for an empty feed; here that is caught and
+    // shown as a failure in this panel, which is neither silent nor fatal.
+    listPublishedAnnouncements(5).catch(() => null),
     getWorkspaceItems("watchlists"),
     getAiAssistantStatus(),
   ]);
@@ -146,7 +150,23 @@ export default async function OverviewPage() {
           {watchlists.state === "unavailable" && <Unavailable result={watchlists} compact />}
         </Panel>
         <Panel title="Recent news" code="NEWS" span={6}>
-          {news.state === "unavailable" && <Unavailable result={news} compact />}
+          {news === null ? (
+            <p className="panel-note">Recent news could not be loaded.</p>
+          ) : news.length === 0 ? (
+            <p className="panel-note">No announcements have been published yet.</p>
+          ) : (
+            <ul className="story-list">
+              {news.map((item) => (
+                <li key={item.id}>
+                  <a href={item.sourceUri} rel="noopener noreferrer" target="_blank">{item.headline}</a>
+                  <span>
+                    {item.status === "withdrawn" ? "Withdrawn · " : item.version > 1 ? "Corrected · " : ""}
+                    {formatAsOf(item.announcedAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </Panel>
 
         <Panel title="Data sources" span={12} flush meta="Rights status per docs/DATA_PROVIDER_ASSESSMENT.md">

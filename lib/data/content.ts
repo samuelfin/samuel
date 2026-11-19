@@ -2,18 +2,6 @@ import { requireUser } from "@/lib/auth/session";
 import { notConnected } from "@/lib/providers/registry";
 import { unavailable, type DataResult } from "@/lib/market-data/types";
 
-export interface NewsItem {
-  id: string;
-  headline: string;
-  summary: string;
-  publishedAt: string;
-  category: string;
-  related: string[];
-  sourceName: string;
-  sourceUrl: string;
-  author?: string;
-}
-
 export interface CorporateAction {
   id: string;
   issuer: string;
@@ -38,21 +26,18 @@ export interface WorkspaceItem {
   name: string;
 }
 
-/**
- * Editorial is not a dataset: it is SFI's own writing, published through the
- * editorial workflow rather than ingested from a provider. Until that workflow
- * exists, these report an empty desk rather than a missing feed.
- */
-export async function getNews(): Promise<DataResult<NewsItem[]>> {
-  await requireUser();
-  return unavailable("editorial.news", "not_enabled", "No items have been published yet.");
-}
-
+/** Structured corporate actions arrive in stage 2d; announcements came first. */
 export async function getCorporateActions(): Promise<DataResult<CorporateAction[]>> {
   await requireUser();
   return notConnected("corporate_actions");
 }
 
+/**
+ * Editorial is not a dataset: it is SFI's own writing, published through the
+ * editorial workflow rather than ingested from a provider. Announcements, which
+ * are structured records rather than editorial, live in
+ * lib/data/announcements.ts and are read directly.
+ */
 export async function getResearchReports(): Promise<DataResult<ResearchReport[]>> {
   await requireUser();
   return unavailable("editorial.research", "not_enabled", "No research reports have been published yet.");

@@ -66,6 +66,7 @@ export default async function DocumentReviewPage() {
         <div className="admin-context">SFI PLATFORM <span>DESK</span></div>
         <div className="admin-nav-label">RESEARCH DESK</div>
         <Link className="admin-nav active" href="/admin/documents"><i>▤</i> Document review</Link>
+        <Link className="admin-nav" href="/admin/announcements"><i>◈</i> Announcements</Link>
         {staff.isPlatformAdmin ? <Link className="admin-nav" href="/admin"><i>▦</i> Administration</Link> : null}
         <Link className="admin-nav" href="/"><i>◈</i> Terminal</Link>
         <div className="admin-sidebar-foot"><span className="secure-indicator" /> STAFF SESSION ACTIVE<br /><small>Roles are verified server-side on every action.</small></div>
