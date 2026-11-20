@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireStaffRole } from "@/lib/auth/staff";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { MAX_CLAIM, validateEditorialItem } from "@/lib/editorial/validation";
@@ -72,14 +73,27 @@ export async function saveDraftAction(
     guest_name: isVideo ? text(form, "guestName") : null,
     ai_assisted: aiAssisted,
     ai_model: aiAssisted ? text(form, "aiModel") : null,
-    correction_reason: text(form, "correctionReason") || null,
-    supersedes_id: text(form, "supersedesId") || null,
   };
 
   const existing = text(form, "itemId");
 
+  // Only touch the correction pointer when the form actually carried it.
+  // Editing a correction draft through a form that omits these fields would
+  // otherwise clear them, leaving a draft that collides with the item it was
+  // meant to replace and can never be published — or deleted.
+  const correctionFields =
+    form.has("supersedesId") || form.has("correctionReason")
+      ? {
+          supersedes_id: text(form, "supersedesId") || null,
+          correction_reason: text(form, "correctionReason") || null,
+        }
+      : {};
+
   if (existing) {
-    const { error } = await admin.from("editorial_items").update(row).eq("id", existing);
+    const { error } = await admin
+      .from("editorial_items")
+      .update({ ...row, ...correctionFields })
+      .eq("id", existing);
     if (error) return { error: explain(error, "The draft could not be saved.") };
     revalidatePath("/admin/editorial");
     return { notice: "Draft saved.", itemId: existing };
@@ -88,14 +102,16 @@ export async function saveDraftAction(
   const { data, error } = await admin
     .from("editorial_items")
     // The author is the signed-in staff member, never a submitted field.
-    .insert({ ...row, author_id: staff.userId })
+    .insert({ ...row, ...correctionFields, author_id: staff.userId })
     .select("id")
     .single();
 
   if (error) return { error: explain(error, "The draft could not be created.") };
 
   revalidatePath("/admin/editorial");
-  return { notice: "Draft created. Add its sources, then publish.", itemId: data.id as string };
+  // Move to the draft's own view. Staying in create mode would turn a second
+  // submit into a duplicate draft on the same slug, and drafts cannot be deleted.
+  redirect(`/admin/editorial?edit=${data.id as string}`);
 }
 
 export async function addCitationAction(

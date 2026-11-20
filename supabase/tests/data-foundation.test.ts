@@ -48,6 +48,7 @@ describe("migrations", () => {
       "202611180008_review_hardening.sql",
       "202611190001_announcements.sql",
       "202611200001_editorial.sql",
+      "202611200002_editorial_hardening.sql",
     ]);
   });
 });

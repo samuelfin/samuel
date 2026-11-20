@@ -64,7 +64,7 @@ export default async function EditorialItemPage({ params }: { params: Promise<{ 
           {item.aiAssisted ? (
             <p className="article-flagline">
               Produced with AI assistance{item.aiModel ? ` (${item.aiModel})` : ""} and reviewed before
-              publication. Every factual claim is cited below.
+              publication.{citations.length > 0 ? " Every factual claim is cited below." : ""}
             </p>
           ) : null}
 

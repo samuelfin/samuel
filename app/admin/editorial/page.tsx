@@ -81,7 +81,11 @@ export default async function EditorialDeskPage({
                   <Link className="correct-link" href="/admin/editorial">Start fresh</Link>
                 ) : null}
               </div>
-              <DraftForm item={editing} correcting={correcting} />
+              <DraftForm
+                key={editing?.id ?? correcting?.id ?? "new"}
+                item={editing}
+                correcting={correcting}
+              />
             </section>
 
             <section className="admin-panel">
