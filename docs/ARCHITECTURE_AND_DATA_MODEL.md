@@ -37,15 +37,40 @@ flowchart LR
 
 ### Delivery priority
 
-`docs/blueprints/` is the source of truth for scope. Its MVP is editorial-first: a
-market snapshot, selected company pages, company announcements, an IPO and
-public-offer area, investor education, basic watchlists and a limited, cited AI
-explainer. Build order follows that, not breadth of asset class.
+The core of the product is **Nigerian listed companies**: who they are, what they
+file, what their financials say, and how those figures move — margins, growth and
+ratios, shown as charts — together with IPOs and public offers. Everything else
+is support for that.
+
+`docs/blueprints/` remains the source of truth for scope, and its MVP is
+editorial-first. Build order follows depth on listed companies, not breadth of
+asset class.
+
+Order of work:
+
+0. **Editorial** (stage 2c, in progress): articles and analysis that cite
+   approved documents and published announcements, plus a lightweight video kind
+   that is a link to YouTube — no uploads, no streaming, no media pipeline.
+1. **Company pages:** profile, its documents, its announcements, financial
+   history drawn from approved annual reports, and computed metrics — margins,
+   growth, ratios — presented as charts. This is the centre of the product.
+
+   Financial history is **entered by an analyst first, not extracted**. Each
+   figure cites the document it came from and the page it appears on, so a reader
+   can check any number against the filing. Machine extraction arrives later, in
+   the Python worker, and will propose figures into the same review queue rather
+   than writing them directly — the extraction becomes a suggestion a person
+   approves, never a published number. Building the manual path first means the
+   citation and review model is proven before anything automated depends on it.
+2. **Dividends.**
+3. **IPO and public-offer centre.**
+4. **Public homepage**, the first surface visible without signing in.
+5. **Share prices**, only once an NGX licence exists. Nothing here waits on it.
 
 Fixed income and macroeconomic series are **frozen**: the schema, catalogues and
-routes already built are kept and maintained, but no new work is scheduled on them
-until the editorial, announcements and offers modules ship. Video and audio are
-deferred entirely.
+routes already built are kept and maintained, but no new work is scheduled on
+them. Audio is not planned. Video exists only as an editorial item holding a
+YouTube video id and a guest name.
 
 Editorial content sits **beside** the provider/dataset machinery rather than inside
 it. A dataset describes licensed third-party material arriving through ingestion;
@@ -101,25 +126,35 @@ Use PostgreSQL `numeric` for all financial values; avoid binary floating point. 
 
 ### Editorial workflow
 
-States: `draft` → `in_financial_review` → `in_fact_check` → `approved` → `published`,
-with `published` → `corrected` and any state → `withdrawn`. Transitions are enforced
-by trigger, not by application code, and every transition is recorded.
+States: `draft` → `published` → `superseded` (a correction replaced it) or
+`withdrawn`. Transitions are enforced by trigger, not by application code.
+
+A draft is freely editable; a published item is not. That one rule removes the
+need for a separate revision table: the versions *are* the history, exactly as
+with announcements and observations.
 
 Three rules carry the weight:
 
-1. **Separation of duties.** The financial reviewer and the fact-checker must each
-   be someone other than the author. Review that an author can perform on their own
-   work is not review.
-2. **Citations before publication.** Publishing requires at least one citation on
-   the current revision, resolving to a document page or an approved observation.
-3. **Named human reviewer for AI-assisted work.** Where `ai_assisted` is set, a
-   human reviewer must be recorded. This is what mechanically enforces the rule that
-   AI-generated numerical claims and investment conclusions are never published
-   without analyst review.
+1. **Citations before publication.** Publishing an article or analysis requires at
+   least one citation resolving to an approved document (with its page) or a
+   published announcement. A video carries a guest, not a filing, so it is exempt.
+2. **AI-assisted work is labelled to readers.** Where `ai_assisted` is set the
+   model must be named, and the reader sees an "AI-assisted" label on the item.
+   The blueprints' rule is that AI-generated conclusions are never passed off as
+   analyst work; saying so on the page is what keeps that true.
+3. **Self-review is flagged, not blocked.** Where the publisher is also the
+   author, `self_reviewed` records it, the audit log carries it, and the desk shows
+   it — the same stance taken for self-approved documents and self-published
+   announcements. Enforcement waits for a second person; the switch is a setting,
+   not a code change.
 
-Corrections after first publication require a reason and retain the previous
-revision, matching how observation history is treated. Readers see only `published`
-and `corrected` items; staff see the queue.
+Corrections publish a new version and mark the old one superseded, with a reason.
+Withdrawal requires a reason and keeps the item visible, labelled: something that
+was published and then vanished is worse than something openly retracted. Readers
+see `published` and `withdrawn`; staff also see drafts and superseded versions.
+
+Nothing here is ever edited in place or deleted, and `audit_logs` is itself
+append-only, since this workflow relies on it as the record of who did what.
 
 ### Ingestion sequencing
 

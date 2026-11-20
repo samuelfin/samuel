@@ -86,6 +86,17 @@ describe("buildContentSecurityPolicy", () => {
     expect(directive(buildContentSecurityPolicy(PROD), "font-src")).toBe("font-src 'self'");
   });
 
+  it("allows YouTube thumbnails as images only, and nothing else from Google", () => {
+    const policy = buildContentSecurityPolicy(PROD);
+    expect(directive(policy, "img-src")).toBe("img-src 'self' blob: data: https://i.ytimg.com");
+    // The one external host must not leak into any directive that can execute,
+    // embed or exfiltrate.
+    for (const name of ["script-src", "frame-src", "connect-src", "style-src", "default-src", "font-src"]) {
+      expect(directive(policy, name)).not.toContain("ytimg");
+      expect(directive(policy, name)).not.toContain("youtube");
+    }
+  });
+
   it("upgrades insecure requests in production only", () => {
     expect(buildContentSecurityPolicy(PROD)).toContain("upgrade-insecure-requests");
     expect(buildContentSecurityPolicy({ ...PROD, isDevelopment: true })).not.toContain("upgrade-insecure-requests");

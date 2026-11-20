@@ -62,7 +62,11 @@ export function buildContentSecurityPolicy({ nonce, isDevelopment, supabaseUrl }
     // `style={{…}}` compiles to, so attributes are allowed separately. A style
     // attribute cannot execute script, so this does not reopen XSS.
     ["style-src-attr", ["'unsafe-inline'"]],
-    ["img-src", ["'self'", "blob:", "data:"]],
+    // i.ytimg.com serves YouTube video thumbnails, and nothing else is allowed
+    // from it: images only, no script and no frame. Editorial stores an
+    // 11-character video id rather than a URL, so the only address that can be
+    // built for this host is a thumbnail path.
+    ["img-src", ["'self'", "blob:", "data:", "https://i.ytimg.com"]],
     // next/font self-hosts its files under /_next/static, so no external font origin.
     ["font-src", ["'self'"]],
     // `ws:` is the Turbopack hot-reload socket, development only.
