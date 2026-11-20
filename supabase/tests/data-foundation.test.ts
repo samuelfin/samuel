@@ -49,6 +49,7 @@ describe("migrations", () => {
       "202611190001_announcements.sql",
       "202611200001_editorial.sql",
       "202611200002_editorial_hardening.sql",
+      "202611200003_company_profiles.sql",
     ]);
   });
 });
@@ -226,7 +227,11 @@ describe("market observations", () => {
 
 describe("financial statements", () => {
   it("only accepts lines while a statement is pending", async () => {
-    const company = await db.query<{ id: string }>("insert into public.companies (name) values ('Test Plc') returning id");
+    // A company carries a web address, so every insert names one. Production
+    // writes go through upsert_company_profile, which derives it from the name.
+    const company = await db.query<{ id: string }>(
+      "insert into public.companies (name, slug) values ('Test Plc', 'test-plc') returning id",
+    );
     const source = await createSourceRecord(db, "companies.financials");
     const statement = await db.query<{ id: string }>(
       "insert into public.financial_statements (company_id, statement_type, period_type, period_start, period_end, audited, source_record_id) values ($1, 'income', 'FY', '2025-01-01', '2025-12-31', true, $2) returning id",
