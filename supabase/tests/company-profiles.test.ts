@@ -1,6 +1,11 @@
+import { globSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { asUser, createTestDatabase, createUser, expectSqlError } from "./db";
+
+const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
 /**
  * A company is an identity six other tables point at, so it is versioned by
@@ -78,8 +83,10 @@ async function companyRow(id: string) {
     review_status: string;
     review_self_approved: boolean;
     reviewed_by: string | null;
+    reviewed_version: number | null;
   }>(
-    `select name, slug, listing_status, listing_board, review_status, review_self_approved, reviewed_by
+    `select name, slug, listing_status, listing_board, review_status, review_self_approved,
+            reviewed_by, reviewed_version
        from public.companies where id = $1`,
     [id],
   );
@@ -279,6 +286,25 @@ describe("editing keeps the history", () => {
     expect(history[1].ngx_symbol).toBe("NEWSYM");
   });
 
+  it("records the symbol the company actually carries, not the one passed in", async () => {
+    // Omitting the symbol leaves the live identifier in place, so the version
+    // must not claim the company had none: the history would then contradict the
+    // register it exists to explain.
+    const id = await upsert({ name: "Kept Symbol Plc", symbol: "KEPT" });
+    await upsert({
+      companyId: id,
+      name: "Kept Symbol Group Plc",
+      slug: "kept-symbol-plc",
+      symbol: null,
+      listingStatus: "suspended",
+      reason: "Trading suspended",
+    });
+
+    expect(await currentSymbol(id)).toBe("KEPT");
+    const history = await versions(id);
+    expect(history[1].ngx_symbol).toBe("KEPT");
+  });
+
   it("refuses to edit a company that does not exist", async () => {
     const error = await expectSqlError(
       upsert({ companyId: "00000000-0000-0000-0000-000000000000", reason: "x" }),
@@ -466,6 +492,116 @@ describe("review", () => {
       db.query("select public.review_company('00000000-0000-0000-0000-000000000000', $1, 'approved')", [reviewer]),
     );
     expect(error.code).toBe("23503");
+  });
+});
+
+describe("a review states which version of the profile was read", () => {
+  it("records the reviewed version, so a later edit cannot claim it was cleared", async () => {
+    const id = await upsert({ name: "Drifting Plc", symbol: "DRIFT" });
+    await db.query("select public.review_company($1, $2, 'approved')", [id, reviewer]);
+
+    const cleared = await companyRow(id);
+    expect(cleared.reviewed_version).toBe(1);
+    expect(cleared.reviewed_by).toBe(reviewer);
+
+    await upsert({ companyId: id, name: "Drifting Group Plc", symbol: "DRIFT", reason: "Renamed" });
+
+    // Still visible to readers, which is the point of not resetting the status —
+    // a typo fix must not delist a company. But the row no longer claims the
+    // reviewer saw this content: the reviewed version is now behind.
+    const edited = await companyRow(id);
+    expect(edited.review_status).toBe("approved");
+    expect(edited.reviewed_version).toBe(1);
+    expect(await versions(id)).toHaveLength(2);
+  });
+
+  it("lets an edited profile be cleared again, so two-person review still bites", async () => {
+    const id = await upsert({ actor: analyst, name: "Recleared Plc", symbol: "RECLR" });
+    await db.query("select public.review_company($1, $2, 'approved')", [id, reviewer]);
+    await upsert({ companyId: id, actor: analyst, name: "Recleared Group Plc", symbol: "RECLR", reason: "Renamed" });
+
+    await db.query("select public.review_company($1, $2, 'approved')", [id, reviewer]);
+    expect((await companyRow(id)).reviewed_version).toBe(2);
+  });
+
+  it("refuses a re-approval when nothing has changed since the last one", async () => {
+    const id = await upsert({ symbol: "NOCHNG" });
+    await db.query("select public.review_company($1, $2, 'approved')", [id, reviewer]);
+    const error = await expectSqlError(db.query("select public.review_company($1, $2, 'approved')", [id, reviewer]));
+    expect(error.code).toBe("23514");
+    expect(error.message).toMatch(/nothing has changed/i);
+  });
+});
+
+describe("the server can call what it needs to call", () => {
+  // The harness runs as the migration owner and only ever switches to
+  // `authenticated`, so a function revoked from PUBLIC without being granted
+  // back to service_role passes every other test and then fails in production
+  // with 42501. This reads the grants the application actually depends on,
+  // discovered from the code rather than from a list kept by hand.
+  it("grants service_role execute on every function the application calls", async () => {
+    const sources = [
+      ...globSync("app/**/*.{ts,tsx}", { cwd: REPO_ROOT }),
+      ...globSync("lib/**/*.ts", { cwd: REPO_ROOT }),
+    ];
+
+    // The receiver matters: `admin.rpc(...)` goes through createAdminClient and
+    // runs as service_role, while `supabase.rpc(...)` is the signed-in user's own
+    // client and runs as authenticated. A function needs the grant for the client
+    // that actually calls it, and only that one.
+    const called = new Map<string, "service_role" | "authenticated">();
+    for (const file of sources) {
+      const text = readFileSync(join(REPO_ROOT, file), "utf8");
+      for (const match of text.matchAll(/\b(\w+)\.rpc\(\s*["'`]([a-z_][a-z0-9_]*)["'`]/g)) {
+        const [, receiver, name] = match;
+        const role = receiver === "admin" ? "service_role" : "authenticated";
+        // A function called both ways needs the server grant, which is stricter.
+        if (role === "service_role" || !called.has(name)) called.set(name, role);
+      }
+    }
+
+    // Guards against the regex silently matching nothing and the test passing
+    // vacuously once the desks are wired up in 3a.2.
+    const { rows: defined } = await db.query<{ proname: string }>(
+      `select distinct p.proname
+         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and p.prosecdef`,
+    );
+    const definedNames = new Set(defined.map((r) => r.proname));
+
+    expect(called.size, "found no .rpc() call sites at all — the scan is not working").toBeGreaterThan(0);
+
+    for (const [name, role] of called) {
+      expect(definedNames, `${name} is called with .rpc() but no such security-definer function exists`).toContain(name);
+
+      const { rows } = await db.query<{ granted: boolean }>(
+        `select has_function_privilege($2, p.oid, 'EXECUTE') as granted
+           from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.proname = $1`,
+        [name, role],
+      );
+      expect(rows.length, `${name} is called with .rpc() but is not defined in public`).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(row.granted, `${role} cannot execute ${name}; the caller would get 42501`).toBe(true);
+      }
+    }
+  });
+
+  it("lets service_role write and review a profile end to end", async () => {
+    await db.exec("set role service_role");
+    try {
+      const { rows } = await db.query<{ id: string }>(
+        `select public.upsert_company_profile($1, 'Service Role Plc', 'service-role-plc', 'listed',
+                 null, null, null, null, null, null, null, 'SVCRL', null) as id`,
+        [analyst],
+      );
+      const id = rows[0].id;
+      await db.query("select public.review_company($1, $2, 'approved')", [id, reviewer]);
+      await db.exec("reset role");
+      expect((await companyRow(id)).review_status).toBe("approved");
+    } finally {
+      await db.exec("reset role");
+    }
   });
 });
 

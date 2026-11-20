@@ -203,6 +203,10 @@ export async function listCitableSources(limit = 50): Promise<CitableSource[]> {
       .from("documents")
       .select("id, title")
       .eq("review_status", "approved")
+      // The citation guard also requires a licence a reader could act on, so an
+      // 'unverified' document is not citable. Offering one here would hand the
+      // writer a source the trigger then refuses with a bare 23514.
+      .neq("licence_class", "unverified")
       .order("reviewed_at", { ascending: false })
       .limit(limit),
     supabase

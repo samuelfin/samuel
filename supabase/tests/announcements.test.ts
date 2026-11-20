@@ -189,6 +189,22 @@ describe("self-publishing is recorded", () => {
     );
     expect(rows[0].self_published).toBe(false);
   });
+
+  it("does not claim independent approval once the approver's account is gone", async () => {
+    // An unknown reviewer must count as self-published. Reading "false" off a
+    // null reviewer would assert a second pair of eyes nobody can show — the
+    // same defect fixed in publish_editorial_item and avoided in review_company.
+    const leaver = await createUser(db, { staff: ["analyst"] });
+    const doc = await makeDocument({ approver: leaver });
+    await db.query("delete from auth.users where id = $1", [leaver]);
+
+    const id = await publish(doc, analyst);
+    const { rows } = await db.query<{ self_published: boolean }>(
+      "select self_published from public.announcements where id = $1",
+      [id],
+    );
+    expect(rows[0].self_published).toBe(true);
+  });
 });
 
 describe("corrections replace rather than rewrite", () => {

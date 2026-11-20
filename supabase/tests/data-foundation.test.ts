@@ -50,6 +50,7 @@ describe("migrations", () => {
       "202611200001_editorial.sql",
       "202611200002_editorial_hardening.sql",
       "202611200003_company_profiles.sql",
+      "202611200004_announcement_self_review_polarity.sql",
     ]);
   });
 });

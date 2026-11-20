@@ -50,6 +50,12 @@ alter table public.companies add column if not exists listing_board text;
 alter table public.companies add column if not exists reviewed_by uuid references auth.users (id) on delete set null;
 alter table public.companies add column if not exists reviewed_at timestamptz;
 alter table public.companies add column if not exists review_self_approved boolean not null default false;
+-- Which version of the profile the reviewer actually saw. An edit does not reset
+-- review_status, because a typo fix must not delist a company — but without this
+-- the row would assert that a reviewer cleared content they never read.
+-- reviewed_version behind the latest version is a precise, queryable
+-- "approved, with changes nobody has reviewed since".
+alter table public.companies add column if not exists reviewed_version integer;
 
 -- Backfill before the not-null constraint. Collisions are resolved with a
 -- counter rather than failing the migration: two companies can legitimately
@@ -153,9 +159,20 @@ begin
       using errcode = '42501';
   end if;
 
+  -- The actor may go to null, and only to null, and only once that account is
+  -- actually gone. Permitting every null-ward change would also let a stray
+  -- statement blank the attribution on a version whose author still exists.
+  -- During ON DELETE SET NULL the parent row has already been removed, so the
+  -- referential action passes this and a gratuitous UPDATE does not.
   if (to_jsonb(new) - 'changed_by'::text) is distinct from (to_jsonb(old) - 'changed_by'::text)
-     or (new.changed_by is not null and new.changed_by is distinct from old.changed_by) then
-    raise exception 'company_profile_versions rows are immutable; only the actor may be anonymised'
+     or (
+       new.changed_by is distinct from old.changed_by
+       and not (
+         new.changed_by is null
+         and not exists (select 1 from auth.users where id = old.changed_by)
+       )
+     ) then
+    raise exception 'company_profile_versions rows are immutable; only a departed actor may be anonymised'
       using errcode = '42501';
   end if;
 
@@ -190,10 +207,18 @@ begin
   end if;
 
   -- updated_at is maintained by its own trigger. reviewed_by is set to null by
-  -- the foreign key when an account is deleted, and that must pass.
+  -- the foreign key when an account is deleted, and that must pass — but only
+  -- that: blanking the reviewer of an account that still exists would erase who
+  -- cleared the profile, which is the attribution this guard is here to keep.
   if (to_jsonb(new) - 'updated_at'::text - 'reviewed_by'::text)
        is distinct from (to_jsonb(old) - 'updated_at'::text - 'reviewed_by'::text)
-     or (new.reviewed_by is not null and new.reviewed_by is distinct from old.reviewed_by) then
+     or (
+       new.reviewed_by is distinct from old.reviewed_by
+       and not (
+         new.reviewed_by is null
+         and not exists (select 1 from auth.users where id = old.reviewed_by)
+       )
+     ) then
     raise exception 'Company profiles change through upsert_company_profile, which records the version'
       using errcode = '42501';
   end if;
@@ -240,6 +265,7 @@ declare
   clean_board text := nullif(btrim(coalesce(p_listing_board, '')), '');
   clean_reason text := nullif(btrim(coalesce(p_change_reason, '')), '');
   current_symbol text;
+  live_symbol text;
   equity_instrument uuid;
   next_version integer := 1;
 begin
@@ -262,6 +288,16 @@ begin
   if clean_slug is null then
     raise exception 'That name produces no usable web address; give the address explicitly'
       using errcode = '23514';
+  end if;
+
+  -- The same padding and truncation the backfill applies, so a very long or very
+  -- short name is handled here rather than reaching companies_slug_check as a
+  -- bare constraint violation.
+  if char_length(clean_slug) < 2 then
+    clean_slug := clean_slug || '-co';
+  end if;
+  if char_length(clean_slug) > 120 then
+    clean_slug := btrim(left(clean_slug, 120), '-');
   end if;
 
   -- An NGX symbol is upper case letters and digits, sometimes with a dot. The
@@ -369,6 +405,18 @@ begin
     end if;
   end if;
 
+  -- The symbol as it actually stands once the maintenance above has run, not the
+  -- argument that was passed. Omitting p_ngx_symbol leaves an existing symbol in
+  -- place, so recording the argument would write null into a version whose
+  -- company still carries that symbol, and the history would contradict the
+  -- register it is supposed to explain.
+  select ii.value into live_symbol
+    from public.instrument_identifiers ii
+    join public.instruments i on i.id = ii.instrument_id
+   where i.company_id = target_company and i.asset_class = 'equity'
+     and ii.scheme = 'ngx_symbol' and ii.valid_to is null
+   limit 1;
+
   select coalesce(max(version), 0) + 1 into next_version
     from public.company_profile_versions where company_id = target_company;
 
@@ -377,7 +425,7 @@ begin
     website, listing_status, listing_board, ngx_symbol, change_reason, changed_by
   )
   select target_company, next_version, c.name, c.legal_name, c.slug, c.sector_id, c.industry,
-         c.description, c.website, c.listing_status, c.listing_board, clean_symbol,
+         c.description, c.website, c.listing_status, c.listing_board, live_symbol,
          clean_reason, actor_user
     from public.companies c where c.id = target_company;
 
@@ -389,7 +437,7 @@ begin
       'company_id', target_company,
       'version', next_version,
       'slug', clean_slug,
-      'ngx_symbol', clean_symbol,
+      'ngx_symbol', live_symbol,
       'listing_status', p_listing_status,
       'reason', clean_reason
     )
@@ -418,6 +466,7 @@ declare
   company public.companies%rowtype;
   last_editor uuid;
   self_flag boolean := false;
+  latest_version integer := 0;
 begin
   if not exists (select 1 from public.platform_admins where user_id = actor_user)
      and not exists (
@@ -436,8 +485,17 @@ begin
     raise exception 'No such company: %', target_company using errcode = '23503';
   end if;
 
-  if company.review_status = 'approved' and p_decision = 'approved' then
-    raise exception 'That company is already approved' using errcode = '23514';
+  select coalesce(max(version), 0) into latest_version
+    from public.company_profile_versions where company_id = target_company;
+
+  -- An approved profile can be re-cleared once it has changed, which is what
+  -- lets two-person review apply to later edits and not only to the first
+  -- approval. Re-approving something nobody has touched is a no-op worth saying
+  -- so about.
+  if company.review_status = 'approved' and p_decision = 'approved'
+     and coalesce(company.reviewed_version, 0) >= latest_version then
+    raise exception 'That company is already approved, and nothing has changed since it was reviewed'
+      using errcode = '23514';
   end if;
 
   if p_decision = 'rejected' and coalesce(btrim(coalesce(p_reason, '')), '') = '' then
@@ -451,7 +509,11 @@ begin
    where company_id = target_company
    order by version desc limit 1;
 
-  self_flag := last_editor is not null and last_editor = actor_user;
+  -- Unknown authorship counts as self-reviewed. If the editor's account has since
+  -- been deleted the foreign key has nulled the actor, and deriving "someone
+  -- independent reviewed this" from that null would assert a second pair of eyes
+  -- nobody can show. The stage 2c lesson, applied here before it can bite.
+  self_flag := last_editor is null or last_editor = actor_user;
 
   if self_flag and public.setting_bool('review.require_two_person', false) then
     raise exception 'Someone other than the person who wrote this profile must review it'
@@ -463,7 +525,8 @@ begin
      set review_status = p_decision,
          reviewed_by = actor_user,
          reviewed_at = now(),
-         review_self_approved = self_flag
+         review_self_approved = self_flag,
+         reviewed_version = latest_version
    where id = target_company;
 
   -- A symbol that resolves to an unapproved instrument is a company a reader can
@@ -480,6 +543,7 @@ begin
     jsonb_build_object(
       'company_id', target_company,
       'self_approved', self_flag,
+      'reviewed_version', latest_version,
       'reason', nullif(btrim(coalesce(p_reason, '')), '')
     )
   );
@@ -496,6 +560,17 @@ revoke all on function public.guard_company_row() from public, anon, authenticat
 revoke all on function public.upsert_company_profile(uuid, text, text, text, uuid, text, text, text, text, text, text, text, text)
   from public, anon, authenticated;
 revoke all on function public.review_company(uuid, uuid, text, text) from public, anon, authenticated;
+
+-- Granted back explicitly. Revoking from PUBLIC removes the implicit grant that
+-- service_role otherwise relies on, so without these two lines the server's own
+-- calls fail with 42501 while every test still passes: the test harness runs as
+-- the migration owner and only ever switches to `authenticated`. The guard
+-- functions need no grant — PostgreSQL checks EXECUTE on a trigger function when
+-- the trigger is created, not when it fires — and company_slug_candidate is only
+-- ever called from inside a security-definer function, which runs as its owner.
+grant execute on function public.upsert_company_profile(uuid, text, text, text, uuid, text, text, text, text, text, text, text, text)
+  to service_role;
+grant execute on function public.review_company(uuid, uuid, text, text) to service_role;
 
 alter table public.company_profile_versions enable row level security;
 
