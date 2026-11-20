@@ -28,6 +28,13 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd(),
   },
+  // The development indicator renders into a portal above everything else, and
+  // at the top left it lands squarely on the terminal's brand mark. Moved rather
+  // than disabled, because it still surfaces compile and runtime errors. This
+  // affects `next dev` only; it is never present in a production build.
+  devIndicators: {
+    position: "bottom-right",
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
