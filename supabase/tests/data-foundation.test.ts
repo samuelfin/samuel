@@ -54,6 +54,8 @@ describe("migrations", () => {
       "202611210001_company_slug_redirect.sql",
       "202611210002_company_desk_visibility.sql",
       "202611210003_people_and_leadership.sql",
+      "202611210004_person_slug_redirect.sql",
+      "202611210005_company_slug_redirect_ordering.sql",
     ]);
   });
 });

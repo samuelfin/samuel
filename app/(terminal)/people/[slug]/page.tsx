@@ -1,0 +1,207 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound, permanentRedirect, unstable_rethrow } from "next/navigation";
+import { DefinitionList, Notice, PageHeader, Panel, PanelGrid } from "@/components/terminal/ui";
+import {
+  currentPersonSlugForFormerSlug,
+  getPersonBySlug,
+  type HeldOffice,
+  type PersonProfile,
+} from "@/lib/data/people";
+import { formatTenure, formatTenureDate, normalizePersonSlug } from "@/lib/people/validation";
+
+type Props = { params: Promise<{ slug: string }> };
+
+/**
+ * One address, two ways in.
+ *
+ * The slug is the person's own address. A slug they used to carry redirects
+ * permanently, because the page really has moved — a married name, a corrected
+ * spelling. There is no ticker equivalent here, so unlike a company page there
+ * is no temporary redirect to make.
+ *
+ * Returns the person or a destination; the redirect happens in the caller,
+ * because permanentRedirect() throws and must not sit inside a try block.
+ */
+async function resolve(
+  raw: string,
+): Promise<{ person: PersonProfile } | { moved: string } | { missing: true }> {
+  const slug = normalizePersonSlug(raw);
+  if (!slug) return { missing: true };
+
+  const person = await getPersonBySlug(slug);
+  if (person) return { person };
+
+  const current = await currentPersonSlugForFormerSlug(slug);
+  if (current) return { moved: current };
+
+  return { missing: true };
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug: raw } = await params;
+  const slug = normalizePersonSlug(raw);
+  if (!slug) return { title: "Person" };
+  try {
+    const person = await getPersonBySlug(slug);
+    return { title: person?.fullName ?? "Person" };
+  } catch (error) {
+    unstable_rethrow(error);
+    // A title is not worth failing a page over.
+    return { title: "Person" };
+  }
+}
+
+function OfficeRow({ office }: { office: HeldOffice }) {
+  const tenure = formatTenure(
+    office.validFrom,
+    office.validFromPrecision,
+    office.validTo,
+    office.validToPrecision,
+  );
+
+  const sourceLabel = office.sourceTitle
+    ? office.sourcePage
+      ? `${office.sourceTitle}, page ${office.sourcePage}`
+      : office.sourceTitle
+    : null;
+
+  return (
+    <article className="review-row">
+      <div className="review-row-main">
+        <strong>
+          {office.roleTitle ?? office.roleName}
+          {office.isActing ? " (acting)" : ""}
+        </strong>
+        <p>
+          {office.companySlug ? (
+            <Link href={`/companies/${office.companySlug}`}>{office.companyName}</Link>
+          ) : (
+            office.companyName
+          )}
+          {office.companySymbol ? <span className="sym"> {office.companySymbol}</span> : null}
+          {tenure ? ` · ${tenure}` : ""}
+        </p>
+        <p className="review-row-meta">
+          {sourceLabel ? (
+            office.sourceUri ? (
+              <a href={office.sourceUri} rel="noopener noreferrer nofollow" target="_blank">
+                {sourceLabel}
+              </a>
+            ) : (
+              sourceLabel
+            )
+          ) : (
+            "Source not recorded"
+          )}
+          {office.lastConfirmedOn
+            ? ` · Last confirmed: ${formatTenureDate(office.lastConfirmedOn, "day")}`
+            : ""}
+        </p>
+      </div>
+    </article>
+  );
+}
+
+export default async function PersonPage({ params }: Props) {
+  const { slug: raw } = await params;
+  const resolved = await resolve(raw);
+
+  if ("missing" in resolved) notFound();
+  if ("moved" in resolved) permanentRedirect(`/people/${resolved.moved}`);
+
+  const person = resolved.person;
+  const current = person.offices.filter((office) => !office.validTo);
+  const former = person.offices.filter((office) => office.validTo);
+  const companies = new Set(person.offices.map((office) => office.companySlug || office.companyName));
+
+  return (
+    <>
+      <PageHeader
+        code="LD"
+        title={`${person.honorific ? `${person.honorific} ` : ""}${person.fullName}`}
+        description={
+          current.length > 0
+            ? current
+                .map((office) => `${office.roleTitle ?? office.roleName}, ${office.companyName}`)
+                .join(" · ")
+            : "No office currently held, on the record we hold."
+        }
+      />
+
+      <PanelGrid>
+        <Panel title="Offices held" span={8} meta="Each cites the filing it comes from">
+          {current.length > 0 ? (
+            <>
+              <p className="panel-note">CURRENT</p>
+              <div className="review-list">
+                {current.map((office) => (
+                  <OfficeRow office={office} key={office.id} />
+                ))}
+              </div>
+            </>
+          ) : null}
+          {former.length > 0 ? (
+            <>
+              <p className="panel-note">FORMERLY</p>
+              <div className="review-list">
+                {former.map((office) => (
+                  <OfficeRow office={office} key={office.id} />
+                ))}
+              </div>
+            </>
+          ) : null}
+          <p className="panel-note">
+            Dates are shown exactly as precisely as the source gives them. Offices are recorded as
+            reported and are not a judgement of the person named.
+          </p>
+        </Panel>
+
+        <Panel title="On the record" span={4}>
+          <DefinitionList
+            items={[
+              { term: "Offices held", detail: String(person.offices.length) },
+              { term: "Companies", detail: String(companies.size) },
+              {
+                term: "Currently",
+                detail:
+                  current.length > 0
+                    ? current.map((office) => office.roleTitle ?? office.roleName).join(" · ")
+                    : "Nothing current on our record",
+              },
+              {
+                term: "What we hold",
+                detail:
+                  "Name, the title each filing gives, the company and the dates. No date of birth, address, family, photographs or pay.",
+              },
+              {
+                term: "If this is wrong",
+                detail:
+                  "An office we get wrong is withdrawn and stops being published, with the reason kept in the record. Write to the research desk.",
+              },
+            ]}
+          />
+        </Panel>
+
+        <Panel title="Company performance during tenure" span={12} meta="Sourced figures, no scores">
+          <div className="provider-empty">
+            <span className="provider-orbit">◌</span>
+            <strong>No data yet</strong>
+            <p>
+              Each company&apos;s reported figures will be shown here beside the dates of the
+              relevant tenure, every number citing the filing and page it came from. They are shown
+              for reference and are not a score, a ranking, or a claim that this person caused them
+              — a tenure overlaps currency moves, commodity cycles and a predecessor&apos;s
+              decisions. Financial history opens at stage 3c.
+            </p>
+          </div>
+        </Panel>
+      </PanelGrid>
+
+      <Notice tone="info">
+        Built from the companies&apos; own filings and announcements. Every office above links to the
+        document and page it was taken from.
+      </Notice>
+    </>
+  );
+}

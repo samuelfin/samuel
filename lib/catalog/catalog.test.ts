@@ -10,14 +10,16 @@ function unique<T>(values: T[]) {
 }
 
 describe("modules", () => {
-  it("has the twelve navigation modules from the brief, with unique codes and routes", () => {
-    expect(MODULES).toHaveLength(12);
+  it("has the navigation modules from the brief, with unique codes and routes", () => {
+    // Twelve from the original brief, plus Leadership at stage 3b.
+    expect(MODULES).toHaveLength(13);
     expect(unique(MODULES.map((m) => m.code))).toBe(true);
     expect(unique(MODULES.map((m) => m.href))).toBe(true);
   });
 
   it("resolves nested routes to their module", () => {
     expect(moduleForPath("/companies/MTNN")?.code).toBe("CO");
+    expect(moduleForPath("/people/ada-okonkwo")?.code).toBe("LD");
     expect(moduleForPath("/")?.code).toBe("OVR");
     expect(moduleForPath("/economy")?.code).toBe("ECO");
     expect(moduleForPath("/nowhere")).toBeUndefined();

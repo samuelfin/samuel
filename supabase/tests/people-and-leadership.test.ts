@@ -1342,6 +1342,144 @@ describe("what a reader may see", () => {
     expect(rows).toBe(0);
   });
 
+  /**
+   * A person's own page, and the address they used to live at.
+   *
+   * The redirect function is security definer, so it bypasses row-level security
+   * entirely and has to spell out its own visibility test. These pin down that
+   * it can never name somebody a reader could not already see — which is the
+   * whole risk of an oracle like this.
+   */
+  describe("a person's address", () => {
+    async function publishedPerson(name: string, slug: string, companyId = company) {
+      const id = await upsertPerson({ name, slug });
+      await db.query("select public.review_person($1, $2, 'approved')", [id, reviewer]);
+      const role = await upsertRole({ personId: id, companyId, roleCode: "cfo" });
+      await db.query("select public.review_company_role($1, $2, 'approved')", [role, reviewer]);
+      return { id, role };
+    }
+
+    async function formerSlugResolves(former: string): Promise<string | null> {
+      return asUser(db, reader, async () => {
+        const { rows } = await db.query<{ slug: string | null }>(
+          "select public.person_slug_for_former_slug($1) as slug",
+          [former],
+        );
+        return rows[0].slug;
+      });
+    }
+
+    it("resolves an address a published person used to carry", async () => {
+      const { id } = await publishedPerson("Renamed Officer", "renamed-officer");
+      await upsertPerson({
+        personId: id,
+        name: "Renamed Officer-Bello",
+        slug: "renamed-officer-bello",
+        reason: "Married name, per the 2026 annual report",
+      });
+
+      expect(await formerSlugResolves("renamed-officer")).toBe("renamed-officer-bello");
+      // The current address resolves to nothing: it is not a former address.
+      expect(await formerSlugResolves("renamed-officer-bello")).toBeNull();
+    });
+
+    it("will not name a person whose only office nobody has approved", async () => {
+      const id = await upsertPerson({ name: "Pending Office Holder", slug: "pending-office" });
+      await db.query("select public.review_person($1, $2, 'approved')", [id, reviewer]);
+      // Approved person, but the office is still in the queue.
+      await upsertRole({ personId: id, companyId: company, roleCode: "coo" });
+      await upsertPerson({
+        personId: id,
+        name: "Pending Office Holder",
+        slug: "pending-office-moved",
+        reason: "Address corrected",
+      });
+
+      expect(await formerSlugResolves("pending-office")).toBeNull();
+    });
+
+    it("will not name a person whose office was withdrawn", async () => {
+      const { id, role } = await publishedPerson("Withdrawn Holder", "withdrawn-holder");
+      await db.query("select public.withdraw_company_role($1, $2, 'Never held this office')", [
+        role,
+        reviewer,
+      ]);
+      await upsertPerson({
+        personId: id,
+        name: "Withdrawn Holder",
+        slug: "withdrawn-holder-moved",
+        reason: "Address corrected",
+      });
+
+      expect(await formerSlugResolves("withdrawn-holder")).toBeNull();
+    });
+
+    it("will not name a person whose only office is at a company nobody approved", async () => {
+      const { id } = await publishedPerson("Hidden Company Officer", "hidden-co-officer", pendingCompany);
+      await upsertPerson({
+        personId: id,
+        name: "Hidden Company Officer",
+        slug: "hidden-co-officer-moved",
+        reason: "Address corrected",
+      });
+
+      expect(await formerSlugResolves("hidden-co-officer")).toBeNull();
+    });
+
+    it("will not name a person nobody has approved", async () => {
+      const id = await upsertPerson({ name: "Unapproved Mover", slug: "unapproved-mover" });
+      const role = await upsertRole({ personId: id, companyId: company, roleCode: "md" });
+      await db.query("select public.review_company_role($1, $2, 'approved')", [role, reviewer]);
+      await upsertPerson({
+        personId: id,
+        name: "Unapproved Mover",
+        slug: "unapproved-mover-moved",
+        reason: "Address corrected",
+      });
+
+      expect(await formerSlugResolves("unapproved-mover")).toBeNull();
+    });
+
+    it("resolves an address released and later taken by a namesake to its current holder", async () => {
+      const { id: first } = await publishedPerson("Shared Address One", "shared-address");
+      await upsertPerson({
+        personId: first,
+        name: "Shared Address One",
+        slug: "shared-address-one",
+        reason: "Disambiguated from a namesake",
+      });
+
+      // The address is free again, so a second person may take it.
+      const { id: second } = await publishedPerson("Shared Address Two", "shared-address");
+      await upsertPerson({
+        personId: second,
+        name: "Shared Address Two",
+        slug: "shared-address-two",
+        reason: "Disambiguated from a namesake",
+      });
+
+      // Whoever held it last wins, which is the order the function asks for.
+      expect(await formerSlugResolves("shared-address")).toBe("shared-address-two");
+      expect(second).not.toBe(first);
+    });
+
+    it("answers nothing for an address nobody has ever had", async () => {
+      expect(await formerSlugResolves("nobody-has-ever-used-this")).toBeNull();
+      expect(await formerSlugResolves("")).toBeNull();
+    });
+
+    it("is closed to an unauthenticated caller and open to a reader", async () => {
+      // The grant is to authenticated and service_role only. anon is a role the
+      // harness cannot assume directly, so this checks the grant itself.
+      const { rows } = await db.query<{ anon: boolean; authed: boolean }>(
+        `select has_function_privilege('anon', 'public.person_slug_for_former_slug(text)', 'EXECUTE') as anon,
+                has_function_privilege('authenticated', 'public.person_slug_for_former_slug(text)', 'EXECUTE') as authed`,
+      );
+      expect(rows[0].anon).toBe(false);
+      expect(rows[0].authed).toBe(true);
+    });
+  });
+
   it("shows the desk its own pending queue, which is the point of the desk", async () => {
     const person = await upsertPerson({ name: "Queued For Review" });
     const role = await upsertRole({ personId: person });

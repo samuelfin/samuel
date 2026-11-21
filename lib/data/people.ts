@@ -364,6 +364,259 @@ export async function listLeadershipForCompany(
     .sort((a, b) => a.sortOrder - b.sortOrder || a.personName.localeCompare(b.personName));
 }
 
+/** An office held, as a person's own page shows it. */
+export interface HeldOffice extends LeadershipMember {
+  companyId: string;
+  companyName: string;
+  companySlug: string;
+  companySymbol: string | null;
+}
+
+export interface PersonProfile {
+  id: string;
+  slug: string;
+  fullName: string;
+  honorific: string | null;
+  offices: HeldOffice[];
+}
+
+export interface PersonCard {
+  slug: string;
+  fullName: string;
+  honorific: string | null;
+  /** What they are best described as now: a current office, or the latest one. */
+  headline: string;
+  /** Offices held, not companies: two offices at one company count twice. */
+  officeCount: number;
+}
+
+interface InstrumentEmbed {
+  asset_class: string;
+  instrument_identifiers: Array<{ scheme: string; value: string; valid_to: string | null }> | null;
+}
+
+interface CompanyEmbed {
+  name: string;
+  slug: string;
+  instruments: InstrumentEmbed[] | null;
+}
+
+// The company is embedded here and not in the company page's own projection,
+// because a person's page is the one place that has to name where each office is
+// held. The instrument embed carries the ticker, picked in TypeScript for the
+// reason the company directory does it that way: filtering an embedded resource
+// changes which parent rows come back, so a company whose symbol had just been
+// closed would silently lose its row rather than show no ticker.
+const HELD_OFFICE_COLUMNS =
+  "id, person_id, company_id, role_code, role_title, is_acting, valid_from, valid_from_precision, " +
+  "valid_to, valid_to_precision, source_page, last_confirmed_on, " +
+  "people(full_name, slug, honorific), " +
+  "person_role_catalogue(name, is_executive, is_board, sort_order), " +
+  "documents!document_id(title, source_uri), announcements!announcement_id(headline, source_uri), " +
+  "companies(name, slug, instruments(asset_class, instrument_identifiers(scheme, value, valid_to)))";
+
+interface HeldOfficeRow extends Omit<LeadershipRow, "people"> {
+  company_id: string;
+  people: Embedded<{ full_name: string; slug: string; honorific: string | null }>;
+  companies: Embedded<CompanyEmbed>;
+}
+
+function liveSymbol(company: CompanyEmbed | null): string | null {
+  for (const instrument of company?.instruments ?? []) {
+    if (instrument.asset_class !== "equity") continue;
+    for (const identifier of instrument.instrument_identifiers ?? []) {
+      if (identifier.scheme === "ngx_symbol" && identifier.valid_to === null) return identifier.value;
+    }
+  }
+  return null;
+}
+
+function toHeldOffice(row: HeldOfficeRow): HeldOffice {
+  const person = one(row.people);
+  const office = one(row.person_role_catalogue);
+  const document = one(row.documents);
+  const announcement = one(row.announcements);
+  const company = one(row.companies);
+  return {
+    id: row.id,
+    personId: row.person_id,
+    personSlug: person?.slug ?? "",
+    personName: person?.full_name ?? "(unknown)",
+    honorific: person?.honorific ?? null,
+    roleCode: row.role_code,
+    roleName: office?.name ?? row.role_code,
+    roleTitle: row.role_title,
+    isExecutive: office?.is_executive ?? false,
+    isBoard: office?.is_board ?? false,
+    isActing: row.is_acting,
+    validFrom: row.valid_from,
+    validFromPrecision: row.valid_from_precision,
+    validTo: row.valid_to,
+    validToPrecision: row.valid_to_precision,
+    sourceTitle: document?.title ?? announcement?.headline ?? null,
+    sourceUri: document?.source_uri ?? announcement?.source_uri ?? null,
+    sourcePage: row.source_page,
+    lastConfirmedOn: row.last_confirmed_on,
+    sortOrder: office?.sort_order ?? 100,
+    companyId: row.company_id,
+    companyName: company?.name ?? "(unknown company)",
+    companySlug: company?.slug ?? "",
+    companySymbol: liveSymbol(company),
+  };
+}
+
+/** Current offices first, then the most recent, so a career reads in reverse. */
+function byTenureDescending(a: HeldOffice, b: HeldOffice): number {
+  if (a.validTo === null && b.validTo !== null) return -1;
+  if (b.validTo === null && a.validTo !== null) return 1;
+  return b.validFrom.localeCompare(a.validFrom) || a.sortOrder - b.sortOrder;
+}
+
+/**
+ * One person by their address, with every office a reader may see.
+ *
+ * Null when nothing is visible — including for an approved person whose offices
+ * are all pending, withdrawn, or at companies nobody has approved. A page
+ * carrying a named private individual and no sourced claim about them is the one
+ * thing this register should not publish, so the absence of a visible office is
+ * a 404 rather than an empty profile. person_slug_for_former_slug applies the
+ * same condition, so a redirect cannot land on a page that then refuses to
+ * render.
+ */
+export async function getPersonBySlug(slug: string): Promise<PersonProfile | null> {
+  const user = await requireUser();
+  if (user.mode !== "authenticated") return null;
+
+  const supabase = await createClient();
+  const { data: person, error } = await supabase
+    .from("people")
+    .select("id, slug, full_name, honorific")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  // A missing row is not a failure; a broken query is.
+  if (error) reportFailure("that person", error);
+  if (!person) return null;
+
+  const { data, error: officeError } = await supabase
+    .from("company_roles")
+    .select(HELD_OFFICE_COLUMNS)
+    .eq("person_id", person.id as string);
+
+  if (officeError || !data) reportFailure("that person's offices", officeError);
+
+  const offices = (data as unknown as HeldOfficeRow[]).map(toHeldOffice).sort(byTenureDescending);
+  if (offices.length === 0) return null;
+
+  return {
+    id: person.id as string,
+    slug: person.slug as string,
+    fullName: person.full_name as string,
+    honorific: (person.honorific as string | null) ?? null,
+    offices,
+  };
+}
+
+/** The current address of a person who used to live at this one. */
+export async function currentPersonSlugForFormerSlug(formerSlug: string): Promise<string | null> {
+  const user = await requireUser();
+  if (user.mode !== "authenticated") return null;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("person_slug_for_former_slug", { former: formerSlug });
+
+  if (error) reportFailure("that address", error);
+  return typeof data === "string" && data.length > 0 ? data : null;
+}
+
+/**
+ * The directory: everyone with at least one office a reader may see.
+ *
+ * Built from the offices rather than from the people, so a name with no visible
+ * office never reaches the list. Row-level security has already removed what
+ * must not be shown, so what comes back is exactly what is publishable.
+ */
+export async function listPeople(limit = 400): Promise<PersonCard[]> {
+  const user = await requireUser();
+  if (user.mode !== "authenticated") return [];
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_roles")
+    .select(
+      "valid_from, valid_to, role_title, is_acting, " +
+        "people(slug, full_name, honorific), person_role_catalogue(name, sort_order), companies(name)",
+    )
+    .limit(limit);
+
+  if (error || !data) reportFailure("the people directory", error);
+
+  interface DirectoryRow {
+    valid_from: string;
+    valid_to: string | null;
+    role_title: string | null;
+    is_acting: boolean;
+    people: Embedded<{ slug: string; full_name: string; honorific: string | null }>;
+    person_role_catalogue: Embedded<{ name: string; sort_order: number }>;
+    companies: Embedded<{ name: string }>;
+  }
+
+  const bySlug = new Map<
+    string,
+    { card: PersonCard; current: boolean; from: string; order: number }
+  >();
+
+  for (const row of data as unknown as DirectoryRow[]) {
+    const person = one(row.people);
+    const office = one(row.person_role_catalogue);
+    const company = one(row.companies);
+    if (!person?.slug) continue;
+
+    const order = office?.sort_order ?? 100;
+    const headline = `${row.is_acting ? "Acting " : ""}${row.role_title ?? office?.name ?? "Officer"}${
+      company ? `, ${company.name}` : ""
+    }`;
+    const current = row.valid_to === null;
+    const existing = bySlug.get(person.slug);
+
+    if (!existing) {
+      bySlug.set(person.slug, {
+        card: {
+          slug: person.slug,
+          fullName: person.full_name,
+          honorific: person.honorific,
+          headline,
+          officeCount: 1,
+        },
+        current,
+        from: row.valid_from,
+        order,
+      });
+      continue;
+    }
+
+    existing.card.officeCount += 1;
+
+    // What to call someone who has held several offices: a current one in
+    // preference to a former one, then the more senior, then the more recent.
+    const better =
+      (current && !existing.current) ||
+      (current === existing.current &&
+        (order < existing.order || (order === existing.order && row.valid_from > existing.from)));
+
+    if (better) {
+      existing.card.headline = headline;
+      existing.current = current;
+      existing.from = row.valid_from;
+      existing.order = order;
+    }
+  }
+
+  return [...bySlug.values()]
+    .map((entry) => entry.card)
+    .sort((a, b) => a.fullName.localeCompare(b.fullName));
+}
+
 /** The offices a role may hold, in the order a filing lists them. */
 export async function listRoleCatalogue(): Promise<RoleOption[]> {
   await requireStaffRole(["analyst"]);

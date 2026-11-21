@@ -670,6 +670,61 @@ describe("an address a reader already has keeps working", () => {
     return rows[0]?.slug ?? null;
   }
 
+  /**
+   * The ordering defect fixed in 202611210005. The function used to order by the
+   * version number, which counts within one company and so says nothing about
+   * which of two companies held an address more recently — both hold it at their
+   * own version 1, and the planner picked between them. Ordering by changed_at
+   * answers the question the function is actually asking.
+   */
+  it("sends an address released and later taken by another company to its current holder", async () => {
+    const first = await upsert({
+      name: "Address Handover One Plc",
+      slug: "handover-shared",
+      symbol: "HANDA",
+    });
+    await db.query("select public.review_company($1, $2, 'approved')", [first, reviewer]);
+    await upsert({
+      companyId: first,
+      name: "Address Handover One Plc",
+      slug: "handover-one",
+      symbol: "HANDA",
+      reason: "Shortened the address",
+    });
+
+    // The address is free again, so a second company may take it.
+    const second = await upsert({
+      name: "Address Handover Two Plc",
+      slug: "handover-shared",
+      symbol: "HANDB",
+    });
+    await db.query("select public.review_company($1, $2, 'approved')", [second, reviewer]);
+    await upsert({
+      companyId: second,
+      name: "Address Handover Two Plc",
+      slug: "handover-two",
+      symbol: "HANDB",
+      reason: "Shortened the address",
+    });
+
+    // Whoever held it last. Both companies hold it at version 1, so ordering by
+    // version number would answer arbitrarily.
+    expect(await formerSlugResolves("handover-shared")).toBe("handover-two");
+
+    // And the reason the fix was needed, rather than taken on trust: the two
+    // candidate rows really are tied on version number, so the old ORDER BY had
+    // nothing to decide with. Ordering by changed_at separates them.
+    const { rows: candidates } = await db.query<{ version: number; rank: number }>(
+      `select v.version, row_number() over (order by v.changed_at desc) as rank
+         from public.company_profile_versions v
+         join public.companies c on c.id = v.company_id
+        where v.slug = 'handover-shared' and c.slug <> 'handover-shared'
+          and c.review_status = 'approved'`,
+    );
+    expect(candidates).toHaveLength(2);
+    expect(new Set(candidates.map((row) => row.version)).size).toBe(1);
+  });
+
   it("sends an old address to the company's current one", async () => {
     const id = await upsert({ name: "Renaming Plc", slug: "renaming-plc", symbol: "RENAM" });
     await db.query("select public.review_company($1, $2, 'approved')", [id, reviewer]);
