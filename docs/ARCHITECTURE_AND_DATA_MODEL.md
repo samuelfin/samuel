@@ -1,5 +1,11 @@
 # Architecture and Data Model
 
+> Roadmap ordering, the entitlements layer, the provider adapter layer and the
+> planned data-model additions follow `docs/blueprints/SFI_ARCHITECTURE_V2.md`,
+> which supersedes earlier ordering where they conflict. Sections it marks
+> **(brainstorm)** are direction, not decisions;
+> `docs/blueprints/BUSINESS_AND_FUTURE.md` holds the longer-range thinking.
+
 ## Recommended system shape
 
 Start with a modular monolith and managed PostgreSQL. Keep the web/API application, ingestion worker and document-processing worker as deployable processes with clear interfaces; do not split into many microservices before scale requires it.
@@ -35,42 +41,119 @@ flowchart LR
 - **User services:** search, watchlists, alerts, notifications and usage limits.
 - **Administration:** approvals, audit logs, provider freshness and exception queues.
 
+### Key boundaries
+
+Four boundaries carry the architecture. Each exists so that a later change lands
+in one place instead of across every page.
+
+- **Provider adapter layer.** Every outside data or AI service connects through a
+  single adapter holding its own credentials, licence metadata and kill switch.
+  That covers more than market-data feeds: extraction, OCR, LLM, email and
+  payment providers too, each configured in the provider registry rather than
+  arriving as bare environment variables and direct calls. Swapping a provider
+  never touches pages. The interface stays `fetch(cursor, window)`,
+  `normalize(record)`, `validate(record)` and `rights(product, use)`.
+- **Market data service boundary.** Prices sit behind one interface, so
+  end-of-day data can later be replaced by a real-time stream without rewriting
+  pages.
+- **Entitlements layer.** One place decides what each tier — free, premium,
+  institutional, API — may see, and enforces licence limits such as NGX prices
+  being visible only to tiers the licence covers. Built in Phase 5, early and
+  deliberately: every later revenue stream depends on it, and retrofitting it
+  across finished pages is the expensive version of the same work. No feature
+  grows its own notion of "is this user allowed".
+- **AI reads only approved data, and cites it.** No privileged database path, no
+  ability to write to the core, and no published claim without a citation a
+  reader can follow to a filing and a page.
+
+An adapter, a collector or a model writes **pending** work only. Approval is a
+human act and it is recorded.
+
+### One core, four faces
+
+The core of the product is **Nigerian listed companies**: who they are, who runs
+them, what they file, what their financials say, and how those figures move —
+margins, growth and ratios, shown as charts — together with IPOs and public
+offers. Everything else is support for that.
+
+One data core is delivered through four surfaces, built in this order:
+
+| Face | For | Arrives |
+| --- | --- | --- |
+| **Terminal** | Professionals: PFAs, asset managers, brokers, analysts | Phase 3 onward (building now) |
+| **Public site** | Everyone — front page, news, research, video, IPO calendar | Phase 5 |
+| **AI analyst** | Premium and institutional users, answers cited to approved data | Phase 8 |
+| **Data API** | Fintechs, banks, media | Phase 9 |
+
+The moat is a clean, verified, machine-readable history of Nigerian companies in
+which **every figure traces to its source document and page**. SFI owns that
+core; outside services plug into it, never the other way round.
+
 ### Delivery priority
 
-The core of the product is **Nigerian listed companies**: who they are, what they
-file, what their financials say, and how those figures move — margins, growth and
-ratios, shown as charts — together with IPOs and public offers. Everything else
-is support for that.
+Build order follows depth on listed companies, not breadth of asset class.
+`docs/blueprints/SFI_ARCHITECTURE_V2.md` §6 is the authoritative roadmap; this is
+its shape, with what each phase means for the code.
 
-`docs/blueprints/` remains the source of truth for scope, and its MVP is
-editorial-first. Build order follows depth on listed companies, not breadth of
-asset class.
+**Done** — foundation (app shell, auth, schema, source registry, provenance,
+security headers, CI); **2a** documents; **2b** announcements; **2c** editorial.
 
-Order of work:
+**Phase 3 — Company intelligence** (in progress)
 
-0. **Editorial** (stage 2c, in progress): articles and analysis that cite
-   approved documents and published announcements, plus a lightweight video kind
-   that is a link to YouTube — no uploads, no streaming, no media pipeline.
-1. **Company pages:** profile, its documents, its announcements, financial
-   history drawn from approved annual reports, and computed metrics — margins,
-   growth, ratios — presented as charts. This is the centre of the product.
+- **3a Profiles.** Admin registry desk, company pickers on the document,
+  announcement and editorial desks, `/companies` directory, `/companies/[slug]`,
+  old-slug redirects, reader verification against the real project.
+- **3b People and leadership.** Executives and board members with tenures, each
+  role citing the document and page, or the announcement, that evidences it. The
+  leadership record is published. A "company performance during tenure" panel
+  shows sourced company facts beside the tenure dates and nothing more: **no
+  scores, no rankings, no causal claims**, and "No data yet" until 3c and 3d
+  deliver figures. Held to the personal-data standard under Future hooks. Peer
+  comparison is deferred.
+- **3c Financial entry desk.** Sector templates (bank, insurer, general), units
+  (₦'000 / million / billion) and period per figure, document plus page for every
+  value, maker-checker, and optional AI-suggested figures a human verifies.
+- **3d Metrics and charts.** System-calculated margins, growth and ROE with
+  recorded formula versions, financial history charts, and a **coverage score**
+  per company.
+- **3e Dividends and corporate actions.** History, dates, charts.
 
-   Financial history is **entered by an analyst first, not extracted**. Each
-   figure cites the document it came from and the page it appears on, so a reader
-   can check any number against the filing. Machine extraction arrives later, in
-   the Python worker, and will propose figures into the same review queue rather
-   than writing them directly — the extraction becomes a suggestion a person
-   approves, never a published number. Building the manual path first means the
-   citation and review model is proven before anything automated depends on it.
-2. **Dividends.**
-3. **IPO and public-offer centre.**
-4. **Public homepage**, the first surface visible without signing in.
-5. **Share prices**, only once an NGX licence exists. Nothing here waits on it.
+Financial history is **entered by an analyst first, not extracted**. Each figure
+cites the document it came from and the page it appears on, so a reader can check
+any number against the filing. Machine extraction arrives in Phase 7, in the
+Python worker, and proposes figures into the same review queue rather than
+writing them directly — a suggestion a person approves, never a published number.
+Building the manual path first means the citation and review model is proven
+before anything automated depends on it.
 
-Fixed income and macroeconomic series are **frozen**: the schema, catalogues and
-routes already built are kept and maintained, but no new work is scheduled on
-them. Audio is not planned. Video exists only as an editorial item holding a
-YouTube video id and a guest name.
+**Later phases**
+
+4. **IPO centre.** Offers, versioned timelines, prospectus library, risks with
+   page references, authorised channels only, post-listing status, IPO calendar.
+5. **Public front and accounts.** The public homepage (no login), free
+   registration, **entitlements with Paystack/Flutterwave subscriptions**,
+   watchlists, email alerts, methodology and corrections pages, mobile-first and
+   low-data mode.
+6. **Pilot launch** (~100 users). Production Supabase Pro and Vercel Pro,
+   monitoring, backups, staff MFA, disclaimers approved by counsel, a light
+   external penetration test, a design-partner cohort.
+7. **Collectors** (Python worker). Macro is unfrozen here: CBN/NBS collectors,
+   issuer and NGX document detection, change detection, quality checks. Writes
+   only pending rows; humans approve.
+8. **AI analyst v1.** Retrieval over approved data with citations; company, CEO
+   and prospectus Q&A; human-reviewed daily briefing drafts; the event-impact
+   map. **Legal gate:** no buy/sell advice or success rates until counsel clears
+   it.
+9. **Data API and market data.** Keys, scopes, rate limits, metering, docs,
+   billing. NGX prices once licensed — end-of-day first — and authorised-vendor
+   status before redistributing prices through the API.
+10. **Scale.** Azure migration, team seats and SSO, real-time prices and
+    streaming, live video, SFI indices, research subscriptions.
+
+Fixed income and macroeconomic series stay **frozen until Phase 7**: the schema,
+catalogues and routes already built are kept and maintained, but no new work is
+scheduled on them before the collectors arrive. Audio is not planned. Video is an
+editorial item holding a YouTube video id and a guest name until Phase 10.
 
 Editorial content sits **beside** the provider/dataset machinery rather than inside
 it. A dataset describes licensed third-party material arriving through ingestion;
@@ -123,6 +206,35 @@ Use PostgreSQL `numeric` for all financial values; avoid binary floating point. 
 | `watchlists`, `watchlist_items`, `alerts`, `notifications` | Owner/tenant, rule, delivery state and history |
 | `ai_conversations`, `ai_messages`, `ai_citations`, `ai_runs` | User/tenant, model/prompt version, retrieved evidence, output, cost and evaluation status |
 | `audit_logs`, `api_keys`, `usage_records` | Actor, action, target, request metadata and usage/entitlement accounting |
+
+### Planned additions
+
+Built so far: source registry, companies with profile history, slug, `pre_listing`
+and listing board, instruments and identifiers, documents with review events,
+source records, versioned observations and statements, announcements, editorial
+items with citations, platform staff, and the append-only audit log.
+
+What is still to come, and when (`SFI_ARCHITECTURE_V2.md` §5):
+
+| Addition | Purpose | Phase |
+| --- | --- | --- |
+| `people`, `company_roles` — role, start, end, source | CEO and board profiles; performance during each tenure | 3b |
+| Sector statement templates — bank / insurer / general line items | Nigerian banks report interest income, loans and deposits, not "revenue" | 3c |
+| Figure entries — value, units, period, document + page, maker, checker, AI-assisted flag | Manual entry under maker-checker | 3c |
+| `financial_metric_definitions` — formula, version, owner | Data dictionary; reproducible metrics | 3d |
+| `corporate_actions` — instrument, type, dates, per-share amount, WHT, ratios | Dividends, bonus, rights, splits | 3e |
+| `public_offers` and its milestones, documents, risks, channels | IPO centre | 4 |
+| Plans, subscriptions, seats, organisations | Free / premium / institutional access | 5 |
+| Sector exposure tags — company ↔ sector/region/theme, with weight and source | Event-impact map | 8 |
+| `events` — policy, project and macro events tagged to sectors and regions | "Who could be affected", without predictions | 8 |
+| AI interactions — question, sources used, model, prompt version, feedback | Audit and answer quality | 8 |
+| API clients — keys, scopes, rate limits, usage metering | Data API | 9 |
+
+Two properties to preserve while building these. Company relationships are
+**effective-dated** with `valid_from`/`valid_to`, as `company_identifiers`
+already is, so an executive who returns to a post gets a second row rather than
+an edited one; and `financial_periods` stays queryable by date range, so a tenure
+can intersect it without new machinery.
 
 ### Editorial workflow
 
@@ -192,12 +304,87 @@ is closed to every client role.
 
 Provider adapters implement a common interface such as `fetch(cursor, window)`, `normalize(record)`, `validate(record)` and `rights(product, use)`. Secrets are injected server-side from a secret manager/environment and never serialized into frontend bundles or logs.
 
+## Future hooks
+
+The boundaries above cover most of what later phases need. Three further
+properties are cheap to hold now and expensive to retrofit, so they are recorded
+here rather than discovered in Phase 9. `docs/blueprints/BUSINESS_AND_FUTURE.md`
+holds the longer reasoning.
+
+- **Rights are recorded per licence and enforced at query time, and display and
+  redistribution are separate permissions on `data_licences`** — not one flag.
+  Showing a figure to a signed-in reader and handing it to a third party for
+  their own product are different grants, often priced differently and sometimes
+  one given while the other is refused. The Phase 9 API serves a row only where
+  its licence permits redistribution; collapsing the two is the change that
+  cannot be undone cheaply.
+- **Every published figure resolves to a document and a page.** Phases 3c and 3d
+  build this for financial history. It is also the precondition for Phase 8:
+  retrieval with citations is a query over data shaped this way, and nothing
+  recovers it afterwards. The model supplies language, retrieval supplies facts,
+  and deterministic calculation with a recorded formula version supplies numbers
+  — a language model does not do arithmetic a reader will act on.
+- **Personal data about named individuals is held to the same standard as a
+  figure.** From 3b, role and tenure cite the filing or announcement that
+  evidences them, pass review, and carry a correction and right-of-reply path.
+  The Nigeria Data Protection Act applies, and attributing a company's results to
+  an individual is a reputational claim, not a derived metric.
+
+## Ideas adopted into the plan
+
+From `SFI_ARCHITECTURE_V2.md` §9. These are accepted direction, scheduled where
+noted, not open questions.
+
+| Idea | Where it lands |
+| --- | --- |
+| **Entitlements early**, before pages multiply | Phase 5 |
+| **Naira payments** via Paystack or Flutterwave, plus institutional invoicing | Phase 5 |
+| **Public methodology page**: every metric's definition and formula version, owned by the economist | Phase 3d |
+| **Coverage score per company** — "5 of 5 years for GTCO, 2 of 5 for X" — honest, and it directs analyst work | Phase 3d |
+| **Design partners**: 3–5 fintechs, brokers or PFAs get early free access for feedback, validating pricing before it is set | Phase 6 |
+| **AI evaluation set**: 50–100 real questions with correct sourced answers, written with the economist; the AI passes it before launch and after every change | Phase 8 |
+| **Public corrections log**, listing every correction and withdrawal | Phase 5 |
+| **Event-impact map without predictions**: tag companies by sector and region exposure, then show who is exposed and how they fared in similar past events, with sources | Phase 8 |
+| **Mobile-first, low-data mode** — many users are on phones and costly data | Phase 5 |
+| **WhatsApp alerts** (brainstorm) | After Phase 6 |
+
+## Open decisions
+
+These block specific phases and are not for an implementer to settle. Build
+around them; do not pick an answer in code.
+
+| Decision | Blocks |
+| --- | --- |
+| First paying customer segment: fintech API or institutional seats | Phase 9 vs Phase 10 priority |
+| How far the AI goes: explain-only, or registered advice | Phase 8 scope |
+| Pilot company list, priority figures, 3 vs 5 years of history | Phase 3c depth |
+| Who verifies figures — the maker-checker partner | Phase 3c staffing |
+| Whether Growth Board segments (Entry / Standard) are shown separately | Whether `listing_board` becomes a CHECK constraint |
+| Budget for the NGX licence, legal advice and hosting this year | Phases 6 and 9 |
+| Whether IR services are offered, and on what independence terms | Revenue model; editorial firewall policy |
+
 ## Initial technology direction
 
 - Next.js + React + TypeScript web application.
 - PostgreSQL (Supabase is a reasonable managed starting option), migrations and row-level security where appropriate.
 - Separate scheduled ingestion/document workers; Python is suitable for document extraction if needed.
 - Private object storage for source documents and exports.
-- Provider-neutral AI orchestration with retrieval and structured outputs.
-- Financial charting library selected after data licensing and accessibility requirements are confirmed.
+- Provider-neutral AI orchestration with retrieval and structured outputs; the LLM reaches the system through an adapter, with pgvector for retrieval and an evaluation set.
+- Charts: TradingView Lightweight Charts for prices, plus one general charting library, both used through the `dataviz` skill so every chart reads as one system.
+- **Payments: Paystack or Flutterwave** for Naira subscriptions, with invoicing for institutional clients. Chosen in Phase 5, behind the adapter layer like any other provider.
+- Email through Resend; alerts by email first, WhatsApp Business API only as a later brainstorm.
 - Hosting selected after region, recovery, privacy and cost review. Avoid committing to an unverified vendor configuration.
+
+**Portable by design.** The stack stays standard Next.js, Postgres and Python so
+hosting can move without a rewrite: local, then Vercel Pro used as a host only
+with no Vercel-specific services, then Azure Container Apps at scale. Supabase
+Free (`sfi-dev`) now, Supabase Pro for the pilot with backups, and Azure Postgres
+later if a client requires it. Secrets move from `.env.local` to Vercel
+environment variables to Azure Key Vault; staff login gains TOTP MFA at the pilot
+and Entra SSO for institutional clients at scale.
+
+**Not plugging in:** AlphaSense, Sentieo, Kensho, QuantConnect, Plaid or
+robo-adviser platforms. They are separate products built for US and global
+markets, hold no Nigerian data, and mostly cannot be resold inside SFI. Study
+them as product references. A single component — transcription, say — may be
+bought later through the adapter layer.
