@@ -53,6 +53,7 @@ describe("migrations", () => {
       "202611200004_announcement_self_review_polarity.sql",
       "202611210001_company_slug_redirect.sql",
       "202611210002_company_desk_visibility.sql",
+      "202611210003_people_and_leadership.sql",
     ]);
   });
 });

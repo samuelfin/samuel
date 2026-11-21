@@ -585,7 +585,11 @@ describe("the server can call what it needs to call", () => {
         expect(row.granted, `${role} cannot execute ${name}; the caller would get 42501`).toBe(true);
       }
     }
-  });
+    // This one reads every source file under app/ and lib/ and then queries once
+    // per call site, so it is I/O-bound rather than quick. The default five
+    // seconds was enough on its own and not enough with the rest of the suite
+    // competing for the machine, which is a flaky test rather than a slow one.
+  }, 60_000);
 
   it("lets service_role write and review a profile end to end", async () => {
     await db.exec("set role service_role");
