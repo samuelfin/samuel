@@ -174,6 +174,27 @@ export async function getEditorialBySlug(
 }
 
 /** Everything, including drafts and superseded versions. Staff only. */
+/**
+ * SFI's own writing about one company. Empty until an author attaches an item to
+ * an issuer, which the editorial desk's company selector does.
+ */
+export async function listEditorialForCompany(companyId: string, limit = 25): Promise<EditorialItem[]> {
+  const user = await requireUser();
+  if (user.mode !== "authenticated") return [];
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("editorial_items")
+    .select(COLUMNS)
+    .eq("company_id", companyId)
+    .in("status", ["published", "withdrawn"])
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .limit(limit);
+
+  if (error || !data) reportFailure("that company's research", error);
+  return (data as unknown as Row[]).map(toItem);
+}
+
 export async function listAllEditorial(limit = 60): Promise<EditorialItem[]> {
   await requireStaffRole(["analyst", "editor"]);
   const supabase = await createClient();

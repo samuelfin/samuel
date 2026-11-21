@@ -113,6 +113,28 @@ export async function listPublishedAnnouncements(limit = 50): Promise<Announceme
   return (data as unknown as Row[]).map(toAnnouncement);
 }
 
+/**
+ * A company's announcements. Withdrawn ones are included, as everywhere else:
+ * something published and then vanished is worse than something openly
+ * retracted, and the reader sees the label.
+ */
+export async function listAnnouncementsForCompany(companyId: string, limit = 25): Promise<Announcement[]> {
+  const user = await requireUser();
+  if (user.mode !== "authenticated") return [];
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("announcements")
+    .select(COLUMNS)
+    .eq("company_id", companyId)
+    .in("status", ["published", "withdrawn"])
+    .order("announced_at", { ascending: false })
+    .limit(limit);
+
+  if (error || !data) reportFailure("that company's announcements", error);
+  return (data as unknown as Row[]).map(toAnnouncement);
+}
+
 /** Everything, including superseded versions. Staff only. */
 export async function listAllAnnouncements(limit = 50): Promise<Announcement[]> {
   await requireStaffRole(["analyst", "editor"]);

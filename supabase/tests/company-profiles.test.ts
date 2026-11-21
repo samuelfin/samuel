@@ -657,6 +657,104 @@ describe("what a reader may see", () => {
   });
 });
 
+describe("an address a reader already has keeps working", () => {
+  async function formerSlugResolves(former: string): Promise<string | null> {
+    const { rows } = await db.query<{ slug: string | null }>(
+      "select public.company_slug_for_former_slug($1) as slug",
+      [former],
+    );
+    return rows[0]?.slug ?? null;
+  }
+
+  it("sends an old address to the company's current one", async () => {
+    const id = await upsert({ name: "Renaming Plc", slug: "renaming-plc", symbol: "RENAM" });
+    await db.query("select public.review_company($1, $2, 'approved')", [id, reviewer]);
+
+    await upsert({
+      companyId: id,
+      name: "Renaming Group Plc",
+      slug: "renaming-group",
+      symbol: "RENAM",
+      reason: "Renamed at the AGM",
+    });
+
+    expect(await formerSlugResolves("renaming-plc")).toBe("renaming-group");
+  });
+
+  it("follows a chain of renames to the latest address", async () => {
+    const id = await upsert({ name: "Chain One Plc", slug: "chain-one", symbol: "CHAIN" });
+    await db.query("select public.review_company($1, $2, 'approved')", [id, reviewer]);
+    await upsert({ companyId: id, name: "Chain Two Plc", slug: "chain-two", symbol: "CHAIN", reason: "First" });
+    await upsert({ companyId: id, name: "Chain Three Plc", slug: "chain-three", symbol: "CHAIN", reason: "Second" });
+
+    expect(await formerSlugResolves("chain-one")).toBe("chain-three");
+    expect(await formerSlugResolves("chain-two")).toBe("chain-three");
+  });
+
+  it("says nothing for the address the company still uses", async () => {
+    const id = await upsert({ name: "Still Here Plc", slug: "still-here", symbol: "STILL" });
+    await db.query("select public.review_company($1, $2, 'approved')", [id, reviewer]);
+    // The page is served directly, so there is nothing to redirect to.
+    expect(await formerSlugResolves("still-here")).toBeNull();
+  });
+
+  it("says nothing for an address nobody ever had", async () => {
+    expect(await formerSlugResolves("never-existed-at-all")).toBeNull();
+  });
+
+  it("will not reveal a company that is not approved", async () => {
+    // A pending or rejected company is invisible to readers, and a redirect that
+    // resolved would confirm it exists and name it.
+    const pending = await upsert({ name: "Hidden Rename Plc", slug: "hidden-one", symbol: "HID1" });
+    await upsert({
+      companyId: pending,
+      name: "Hidden Rename Plc",
+      slug: "hidden-two",
+      symbol: "HID1",
+      reason: "Renamed while still pending",
+    });
+    expect(await formerSlugResolves("hidden-one")).toBeNull();
+
+    const rejected = await upsert({ name: "Rejected Rename Plc", slug: "rejected-one", symbol: "REJ1" });
+    await upsert({
+      companyId: rejected,
+      name: "Rejected Rename Plc",
+      slug: "rejected-two",
+      symbol: "REJ1",
+      reason: "Renamed",
+    });
+    await db.query("select public.review_company($1, $2, 'rejected', 'Not an issuer')", [rejected, reviewer]);
+    expect(await formerSlugResolves("rejected-one")).toBeNull();
+  });
+
+  it("is answerable by an ordinary reader, since the history itself is not", async () => {
+    const id = await upsert({ name: "Reader Redirect Plc", slug: "reader-one", symbol: "RDR1" });
+    await db.query("select public.review_company($1, $2, 'approved')", [id, reviewer]);
+    await upsert({
+      companyId: id,
+      name: "Reader Redirect Plc",
+      slug: "reader-two",
+      symbol: "RDR1",
+      reason: "Renamed",
+    });
+
+    const asReader = await asUser(db, reader, async () => {
+      const { rows } = await db.query<{ slug: string | null }>(
+        "select public.company_slug_for_former_slug('reader-one') as slug",
+      );
+      return rows[0]?.slug ?? null;
+    });
+    expect(asReader).toBe("reader-two");
+
+    // And the table behind it stays closed to them.
+    const historyRows = await asUser(db, reader, async () => {
+      const { rows } = await db.query("select slug from public.company_profile_versions where company_id = $1", [id]);
+      return rows.length;
+    });
+    expect(historyRows).toBe(0);
+  });
+});
+
 describe("the listing board is reference text until the board list is confirmed", () => {
   it("accepts the three current NGX boards", async () => {
     for (const board of ["Premium Board", "Main Board", "Growth Board"]) {
