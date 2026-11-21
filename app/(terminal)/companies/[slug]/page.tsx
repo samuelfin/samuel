@@ -14,6 +14,8 @@ import {
   type CompanyProfile,
 } from "@/lib/data/companies";
 import { listEditorialForCompany } from "@/lib/data/editorial";
+import { listLeadershipForCompany } from "@/lib/data/people";
+import { LeadershipPanel } from "@/components/terminal/leadership-panel";
 import { ANNOUNCEMENT_CATEGORY_LABELS, type AnnouncementCategory } from "@/lib/announcements/validation";
 import { EDITORIAL_KIND_LABELS } from "@/lib/editorial/validation";
 
@@ -122,10 +124,11 @@ export default async function CompanyPage({ params }: Props) {
   // Each panel stands or falls on its own: a failing query reports itself rather
   // than taking the page down, and an empty result is never dressed up as a
   // failure.
-  const [documents, announcements, research] = await Promise.all([
+  const [documents, announcements, research, leadership] = await Promise.all([
     panel(getCompanyDocuments(company.id), "Could not load documents."),
     panel(listAnnouncementsForCompany(company.id), "Could not load announcements."),
     panel(listEditorialForCompany(company.id), "Could not load research."),
+    panel(listLeadershipForCompany(company.id), "Could not load leadership."),
   ]);
 
   return (
@@ -177,6 +180,14 @@ export default async function CompanyPage({ params }: Props) {
               the document and page it came from, so any number can be checked against its source.
             </p>
           </div>
+        </Panel>
+
+        <Panel title="Leadership" span={12} meta="Each office cites its source">
+          {!leadership.ok ? (
+            <Notice tone="caution">{leadership.error}</Notice>
+          ) : (
+            <LeadershipPanel members={leadership.data} />
+          )}
         </Panel>
 
         <Panel title="Share price" span={5} meta="Awaiting an exchange licence">

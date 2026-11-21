@@ -1,5 +1,6 @@
 import "server-only";
 import { requireStaffRole } from "@/lib/auth/staff";
+import { requireUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -237,6 +238,130 @@ function toRole(row: RoleRow, version: number): RoleForDesk {
     version,
     updatedAt: row.updated_at,
   };
+}
+
+/** What a company page shows about one office, and nothing more. */
+export interface LeadershipMember {
+  id: string;
+  personId: string;
+  personSlug: string;
+  personName: string;
+  honorific: string | null;
+  roleCode: string;
+  roleName: string;
+  roleTitle: string | null;
+  isExecutive: boolean;
+  isBoard: boolean;
+  isActing: boolean;
+  validFrom: string;
+  validFromPrecision: string;
+  validTo: string | null;
+  validToPrecision: string | null;
+  /** The evidence, so a reader can check the claim at its source. */
+  sourceTitle: string | null;
+  sourceUri: string | null;
+  sourcePage: number | null;
+  lastConfirmedOn: string | null;
+  sortOrder: number;
+}
+
+// Narrower than the desk's projection on purpose. A reader needs the name, the
+// office, the tenure and the source; the review columns, the withdrawal reason
+// and the confirming source are the desk's business, and selecting them would
+// ship every one of them into the payload of every company page view.
+const LEADERSHIP_COLUMNS =
+  "id, person_id, role_code, role_title, is_acting, valid_from, valid_from_precision, " +
+  "valid_to, valid_to_precision, source_page, last_confirmed_on, " +
+  "people(full_name, slug, honorific), " +
+  "person_role_catalogue(name, is_executive, is_board, sort_order), " +
+  "documents!document_id(title, source_uri), announcements!announcement_id(headline, source_uri)";
+
+interface LeadershipRow {
+  id: string;
+  person_id: string;
+  role_code: string;
+  role_title: string | null;
+  is_acting: boolean;
+  valid_from: string;
+  valid_from_precision: string;
+  valid_to: string | null;
+  valid_to_precision: string | null;
+  source_page: number | null;
+  last_confirmed_on: string | null;
+  people: Embedded<{ full_name: string; slug: string; honorific: string | null }>;
+  person_role_catalogue: Embedded<{
+    name: string;
+    is_executive: boolean;
+    is_board: boolean;
+    sort_order: number;
+  }>;
+  documents: Embedded<{ title: string; source_uri: string | null }>;
+  announcements: Embedded<{ headline: string; source_uri: string }>;
+}
+
+/**
+ * Who runs one company, for that company's page.
+ *
+ * Row-level security does the filtering: a reader is shown an office only when
+ * the office, the person and the company are all approved and it has not been
+ * withdrawn. Nothing here re-states those conditions, because a filter in the
+ * query that the policy also enforces is a second place to get it wrong — and
+ * the one that silently stops matching.
+ *
+ * Empty until an analyst records a board, which is an honest "No data yet"
+ * rather than a claim that a company has no directors.
+ */
+export async function listLeadershipForCompany(
+  companyId: string,
+  limit = 60,
+): Promise<LeadershipMember[]> {
+  const user = await requireUser();
+  // Local preview runs without Supabase, where createClient() throws.
+  if (user.mode !== "authenticated") return [];
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_roles")
+    .select(LEADERSHIP_COLUMNS)
+    .eq("company_id", companyId)
+    .limit(limit);
+
+  if (error || !data) reportFailure("that company's leadership", error);
+
+  return (data as unknown as LeadershipRow[])
+    .map((row) => {
+      const person = one(row.people);
+      const office = one(row.person_role_catalogue);
+      const document = one(row.documents);
+      const announcement = one(row.announcements);
+      return {
+        id: row.id,
+        personId: row.person_id,
+        personSlug: person?.slug ?? "",
+        personName: person?.full_name ?? "(unknown)",
+        honorific: person?.honorific ?? null,
+        roleCode: row.role_code,
+        roleName: office?.name ?? row.role_code,
+        roleTitle: row.role_title,
+        isExecutive: office?.is_executive ?? false,
+        isBoard: office?.is_board ?? false,
+        isActing: row.is_acting,
+        validFrom: row.valid_from,
+        validFromPrecision: row.valid_from_precision,
+        validTo: row.valid_to,
+        validToPrecision: row.valid_to_precision,
+        sourceTitle: document?.title ?? announcement?.headline ?? null,
+        sourceUri: document?.source_uri ?? announcement?.source_uri ?? null,
+        sourcePage: row.source_page,
+        lastConfirmedOn: row.last_confirmed_on,
+        sortOrder: office?.sort_order ?? 100,
+      };
+    })
+    // Ordered by the catalogue's own sort order, so a board reads the way a
+    // filing lists it — chairman first, then the executives. Sorted here rather
+    // than in the query because ordering by an embedded column is a PostgREST
+    // feature it is not worth depending on for this.
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.personName.localeCompare(b.personName));
 }
 
 /** The offices a role may hold, in the order a filing lists them. */

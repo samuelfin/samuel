@@ -1259,6 +1259,89 @@ describe("what a reader may see", () => {
     }
   });
 
+  /**
+   * What the company page asks for: the offices held at one company, as a
+   * signed-in reader. The page relies on row-level security for the filtering
+   * rather than restating it in the query, so this exercises the read the way
+   * the page makes it — scoped by company and nothing else.
+   */
+  it("gives a reader a company's board, split and ordered by the catalogue", async () => {
+    const boardCompany = await makeCompany("Board Order Plc", "board-order", "BOARD");
+
+    async function approvedRole(name: string, roleCode: string, validTo: string | null = null) {
+      const subject = await upsertPerson({ name });
+      await db.query("select public.review_person($1, $2, 'approved')", [subject, reviewer]);
+      const id = await upsertRole({
+        personId: subject,
+        companyId: boardCompany,
+        roleCode,
+        validTo,
+      });
+      await db.query("select public.review_company_role($1, $2, 'approved')", [id, reviewer]);
+      return id;
+    }
+
+    await approvedRole("Chair Person", "chair");
+    await approvedRole("Chief Exec", "ceo");
+    await approvedRole("Finance Chief", "cfo");
+    await approvedRole("Independent Director", "independent_non_executive_director");
+    const departed = await approvedRole("Departed Officer", "coo", "2022-12-31");
+
+    const hidden = await upsertPerson({ name: "Unapproved Officer" });
+    const hiddenRole = await upsertRole({ personId: hidden, companyId: boardCompany, roleCode: "md" });
+
+    const rows = await asUser(db, reader, async () => {
+      const { rows: found } = await db.query<{
+        id: string;
+        full_name: string;
+        name: string;
+        is_executive: boolean;
+        is_board: boolean;
+        sort_order: number;
+        valid_to: Date | null;
+      }>(
+        `select r.id, p.full_name, cat.name, cat.is_executive, cat.is_board, cat.sort_order, r.valid_to
+           from public.company_roles r
+           join public.people p on p.id = r.person_id
+           join public.person_role_catalogue cat on cat.id = r.role_code
+          where r.company_id = $1
+          order by cat.sort_order`,
+        [boardCompany],
+      );
+      return found;
+    });
+
+    // The unapproved person's office is absent, and the departed officer is
+    // present with an end date for the "formerly" group.
+    expect(rows.map((r) => r.full_name)).not.toContain("Unapproved Officer");
+    expect(rows.map((r) => r.id)).not.toContain(hiddenRole);
+    expect(rows.map((r) => r.id)).toContain(departed);
+
+    // Ordered as a filing lists a board: the chairman first.
+    expect(rows[0].full_name).toBe("Chair Person");
+
+    // The split the panel draws comes from the catalogue, not from a list in
+    // TypeScript, so a new office added as a row lands in the right group.
+    const byName = new Map(rows.map((r) => [r.full_name, r]));
+    expect(byName.get("Chair Person")).toMatchObject({ is_board: true, is_executive: false });
+    expect(byName.get("Chief Exec")).toMatchObject({ is_board: false, is_executive: true });
+    expect(byName.get("Independent Director")).toMatchObject({ is_board: true, is_executive: false });
+    expect(byName.get("Departed Officer")?.valid_to).not.toBeNull();
+  });
+
+  it("gives a reader nothing for a company whose leadership nobody has recorded", async () => {
+    const quiet = await makeCompany("No Board Yet Plc", "no-board-yet", "QUIET");
+    const rows = await asUser(db, reader, async () => {
+      const { rows: found } = await db.query<{ n: number }>(
+        "select count(*)::int as n from public.company_roles where company_id = $1",
+        [quiet],
+      );
+      return found[0].n;
+    });
+    // Which the page reports as "No data yet", not as a company with no board.
+    expect(rows).toBe(0);
+  });
+
   it("shows the desk its own pending queue, which is the point of the desk", async () => {
     const person = await upsertPerson({ name: "Queued For Review" });
     const role = await upsertRole({ personId: person });
