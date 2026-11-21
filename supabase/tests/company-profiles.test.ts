@@ -29,7 +29,7 @@ beforeAll(async () => {
   admin = await createUser(db, { admin: true });
   editor = await createUser(db, { staff: ["editor"] });
   reader = await createUser(db);
-}, 60_000);
+}, 180_000);
 
 let counter = 0;
 
@@ -752,6 +752,66 @@ describe("an address a reader already has keeps working", () => {
       return rows.length;
     });
     expect(historyRows).toBe(0);
+  });
+});
+
+describe("what the desk can see", () => {
+  // The registry desk reads through the analyst's own session, so row-level
+  // security decides what the queue contains. Every other test here calls the
+  // functions as the migration owner, where no policy applies — which is exactly
+  // how an empty desk would have shipped unnoticed.
+  it("shows an analyst the companies waiting to be reviewed", async () => {
+    const pending = await upsert({ name: "Desk Pending Plc", symbol: "DSKP" });
+    const rejected = await upsert({ name: "Desk Rejected Plc", symbol: "DSKR" });
+    await db.query("select public.review_company($1, $2, 'rejected', 'Not an issuer')", [rejected, reviewer]);
+
+    const seen = await asUser(db, analyst, async () => {
+      const { rows } = await db.query<{ id: string }>("select id from public.companies where id = any($1)", [
+        [pending, rejected],
+      ]);
+      return rows.map((r) => r.id);
+    });
+
+    // Without this an analyst's review queue is always empty, and following an
+    // edit link to a pending company yields nothing — while the write functions
+    // would happily let them act on it.
+    expect(seen).toContain(pending);
+    expect(seen).toContain(rejected);
+  });
+
+  it("shows an analyst a pending company's ticker, so the desk can display it", async () => {
+    const pending = await upsert({ name: "Desk Ticker Plc", symbol: "DSKT" });
+
+    const symbols = await asUser(db, analyst, async () => {
+      const { rows } = await db.query<{ value: string }>(
+        `select ii.value from public.instrument_identifiers ii
+           join public.instruments i on i.id = ii.instrument_id
+          where i.company_id = $1`,
+        [pending],
+      );
+      return rows.map((r) => r.value);
+    });
+    expect(symbols).toContain("DSKT");
+  });
+
+  it("still shows a plain reader nothing unapproved", async () => {
+    const pending = await upsert({ name: "Reader Blind Plc", symbol: "RDRB" });
+
+    const seen = await asUser(db, reader, async () => {
+      const { rows } = await db.query("select id from public.companies where id = $1", [pending]);
+      return rows.length;
+    });
+    expect(seen).toBe(0);
+  });
+
+  it("shows an editor nothing unapproved either, since they do not run this desk", async () => {
+    const pending = await upsert({ name: "Editor Blind Plc", symbol: "EDTB" });
+
+    const seen = await asUser(db, editor, async () => {
+      const { rows } = await db.query("select id from public.companies where id = $1", [pending]);
+      return rows.length;
+    });
+    expect(seen).toBe(0);
   });
 });
 

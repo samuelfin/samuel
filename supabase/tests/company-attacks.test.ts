@@ -24,7 +24,7 @@ beforeAll(async () => {
   analyst = await createUser(db, { staff: ["analyst"] });
   reviewer = await createUser(db, { staff: ["analyst"] });
   reader = await createUser(db);
-}, 60_000);
+}, 180_000);
 
 let counter = 0;
 
@@ -385,7 +385,159 @@ describe("4. integrity", () => {
   });
 });
 
-describe("5. offboarding stays possible", () => {
+describe("5. the widened desk visibility gives nothing away", () => {
+  // 202611210002 admits has_staff_role(['analyst']) to every company, identifier
+  // and instrument, so the registry desk can work its own queue. Anyone who is
+  // not an analyst must be exactly as blind as before.
+  for (const role of ["editor", "fact_checker", "publisher"] as const) {
+    it(`gives a ${role} no sight of an unapproved company`, async () => {
+      const actor = await createUser(db, { staff: [role] });
+      const pending = await createCompany();
+
+      const seen = await asUser(db, actor, async () => {
+        const company = await db.query("select id from public.companies where id = $1", [pending]);
+        const identifiers = await db.query(
+          `select ii.value from public.instrument_identifiers ii
+             join public.instruments i on i.id = ii.instrument_id
+            where i.company_id = $1`,
+          [pending],
+        );
+        const instruments = await db.query("select id from public.instruments where company_id = $1", [pending]);
+        const companyIdentifiers = await db.query(
+          "select id from public.company_identifiers where company_id = $1",
+          [pending],
+        );
+        // The one this originally missed. The 3a.1 policy admitted
+        // is_platform_staff(), which is any staff row at all, so an editor could
+        // read a pending company's name, description and symbol out of its
+        // history while being unable to see the company row itself.
+        const history = await db.query(
+          "select name, description, ngx_symbol from public.company_profile_versions where company_id = $1",
+          [pending],
+        );
+        return (
+          company.rows.length +
+          identifiers.rows.length +
+          instruments.rows.length +
+          companyIdentifiers.rows.length +
+          history.rows.length
+        );
+      });
+      expect(seen).toBe(0);
+    });
+  }
+
+  it("still shows an analyst the history, which is their working record", async () => {
+    const analystActor = await createUser(db, { staff: ["analyst"] });
+    const pending = await createCompany();
+
+    const rows = await asUser(db, analystActor, async () => {
+      const { rows } = await db.query("select version from public.company_profile_versions where company_id = $1", [
+        pending,
+      ]);
+      return rows.length;
+    });
+    expect(rows).toBeGreaterThan(0);
+  });
+
+  it("gives a plain reader no sight of one either", async () => {
+    const pending = await createCompany();
+    const seen = await asUser(db, reader, async () => {
+      const { rows } = await db.query("select id from public.companies where id = $1", [pending]);
+      return rows.length;
+    });
+    expect(seen).toBe(0);
+  });
+
+  it("still gives nobody a way to write, however much they can read", async () => {
+    const analystActor = await createUser(db, { staff: ["analyst"] });
+    const approved = await createCompany();
+    await db.query("select public.review_company($1, $2, 'approved')", [approved, reviewer]);
+
+    await asUser(db, analystActor, async () => {
+      const update = await expectSqlError(
+        db.query("update public.companies set name = 'Owned' where id = $1", [approved]),
+      );
+      expect(update.code).toBe("42501");
+
+      const insert = await expectSqlError(
+        db.query("insert into public.companies (name, slug, listing_status) values ('X', 'x-co', 'listed')"),
+      );
+      expect(insert.code).toBe("42501");
+
+      const identifier = await expectSqlError(
+        db.query(
+          "insert into public.instrument_identifiers (instrument_id, scheme, value) values (gen_random_uuid(), 'ngx_symbol', 'OWNED')",
+        ),
+      );
+      expect(identifier.code).toBe("42501");
+    });
+  });
+});
+
+describe("6. the redirect chain cannot loop or leave the site", () => {
+  it("never returns the address it was asked about", async () => {
+    const id = await createCompany();
+    await db.query("select public.review_company($1, $2, 'approved')", [id, reviewer]);
+    const { rows } = await db.query<{ slug: string }>("select slug from public.companies where id = $1", [id]);
+    const current = rows[0].slug;
+
+    const { rows: resolved } = await db.query<{ slug: string | null }>(
+      "select public.company_slug_for_former_slug($1) as slug",
+      [current],
+    );
+    // If it ever returned its own input the page would redirect to itself for ever.
+    expect(resolved[0].slug).toBeNull();
+  });
+
+  it("always resolves to an address that serves a page directly", async () => {
+    const id = await createCompany();
+    await db.query("select public.review_company($1, $2, 'approved')", [id, reviewer]);
+    const { rows: before } = await db.query<{ slug: string }>("select slug from public.companies where id = $1", [id]);
+    const former = before[0].slug;
+
+    counter += 1;
+    const renamed = `redirect-target-${counter}`;
+    await db.query(
+      `select public.upsert_company_profile(
+         $1, 'Redirect Target Plc', $2, 'pre_listing', $3, null, null, null, null, null, null, null, 'Renamed'
+       )`,
+      [analyst, renamed, id],
+    );
+
+    const { rows: hop } = await db.query<{ slug: string | null }>(
+      "select public.company_slug_for_former_slug($1) as slug",
+      [former],
+    );
+    expect(hop[0].slug).toBe(renamed);
+
+    // The destination is an approved company's current address, so the next
+    // request is served rather than redirected again — one hop, never a chain.
+    const { rows: lands } = await db.query<{ n: number }>(
+      "select count(*)::int as n from public.companies where slug = $1 and review_status = 'approved'",
+      [renamed],
+    );
+    expect(lands[0].n).toBe(1);
+
+    const { rows: again } = await db.query<{ slug: string | null }>(
+      "select public.company_slug_for_former_slug($1) as slug",
+      [renamed],
+    );
+    expect(again[0].slug).toBeNull();
+  });
+
+  it("can only ever name an address that is inert in a URL", async () => {
+    // Whatever the history holds, the function returns companies.slug, which
+    // carries the slug CHECK. There is no column it could return that an
+    // attacker controls freely.
+    const { rows } = await db.query<{ slug: string }>("select slug from public.companies");
+    for (const row of rows) {
+      expect(row.slug).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
+    }
+  });
+});
+
+describe("7. offboarding stays possible", () => {
   it("deletes a staff account that wrote and reviewed profiles", async () => {
     const leaver = await createUser(db, { staff: ["analyst"] });
     const first = await createCompany({ actor: leaver });

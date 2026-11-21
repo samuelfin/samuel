@@ -86,6 +86,9 @@ const COLUMNS =
   "id, kind, slug, title, standfirst, body_text, video_id, guest_name, company_id, status, version, " +
   "correction_reason, published_at, withdrawn_at, withdrawal_reason, self_reviewed, ai_assisted, ai_model, updated_at";
 
+const COMPANY_PANEL_COLUMNS =
+  "id, kind, slug, title, status, published_at, ai_assisted";
+
 const CITATION_COLUMNS =
   "id, claim, source_page, documents(title, source_uri), announcements(headline, source_uri)";
 
@@ -177,28 +180,65 @@ export async function getEditorialBySlug(
   return { item, citations: (cited as unknown as CitationRow[]).map(toCitation) };
 }
 
-/** Everything, including drafts and superseded versions. Staff only. */
+/** What a company page shows about one editorial item, and nothing more. */
+export interface CompanyEditorialItem {
+  id: string;
+  kind: EditorialKind;
+  slug: string;
+  title: string;
+  status: EditorialStatus;
+  publishedAt: string | null;
+  aiAssisted: boolean;
+}
+
 /**
  * SFI's own writing about one company. Empty until an author attaches an item to
  * an issuer, which the editorial desk's company selector does.
+ *
+ * The narrow shape is deliberate. The panel renders a title, a kind and a date,
+ * and selecting the full item shipped every article's body into the payload of
+ * every company page view.
  */
-export async function listEditorialForCompany(companyId: string, limit = 25): Promise<EditorialItem[]> {
+export async function listEditorialForCompany(
+  companyId: string,
+  limit = 25,
+): Promise<CompanyEditorialItem[]> {
   const user = await requireUser();
   if (user.mode !== "authenticated") return [];
 
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("editorial_items")
-    .select(COLUMNS)
+    .select(COMPANY_PANEL_COLUMNS)
     .eq("company_id", companyId)
     .in("status", ["published", "withdrawn"])
     .order("published_at", { ascending: false, nullsFirst: false })
     .limit(limit);
 
   if (error || !data) reportFailure("that company's research", error);
-  return (data as unknown as Row[]).map(toItem);
+
+  type PanelRow = {
+    id: string;
+    kind: string;
+    slug: string;
+    title: string;
+    status: string;
+    published_at: string | null;
+    ai_assisted: boolean;
+  };
+
+  return (data as unknown as PanelRow[]).map((row) => ({
+    id: row.id,
+    kind: row.kind as EditorialKind,
+    slug: row.slug,
+    title: row.title,
+    status: row.status as EditorialStatus,
+    publishedAt: row.published_at,
+    aiAssisted: row.ai_assisted,
+  }));
 }
 
+/** Everything, including drafts and superseded versions. Staff only. */
 export async function listAllEditorial(limit = 60): Promise<EditorialItem[]> {
   await requireStaffRole(["analyst", "editor"]);
   const supabase = await createClient();

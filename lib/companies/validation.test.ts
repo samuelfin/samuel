@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { slugify, validateCompany, type CompanyInput } from "./validation";
+import { normalizeSlug, normalizeSymbol, slugify, validateCompany, type CompanyInput } from "./validation";
 
 function input(overrides: Partial<CompanyInput> = {}): CompanyInput {
   return {
@@ -32,6 +32,82 @@ describe("slugify", () => {
     const slug = slugify(`${"ab ".repeat(60)}`);
     expect(slug.endsWith("-")).toBe(false);
     expect(slug.length).toBeLessThanOrEqual(120);
+  });
+});
+
+describe("resolving an address cannot produce a redirect target", () => {
+  /**
+   * /companies/[slug] builds its redirect as `/companies/${destination}`, and the
+   * destination is always a companies.slug read back from the database. These two
+   * functions decide what is looked up in the first place, so anything they let
+   * through has to be inert. A value that escaped here is the one way the page
+   * could become an open redirect.
+   */
+  const hostile = [
+    "//evil.test",
+    "///evil.test",
+    "\\\\evil.test",
+    "\\evil.test",
+    "https://evil.test",
+    "http:/evil.test",
+    "javascript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "../../admin",
+    "..%2f..%2fadmin",
+    "%2e%2e%2fadmin",
+    // Double-encoded: the route param arrives decoded once already.
+    "%252e%252e%252fadmin",
+    "a/b",
+    "a?b=1",
+    "a#b",
+    "a%00b",
+    // CRLF, for response splitting.
+    "a%0d%0aLocation:%20https://evil.test",
+    "a\r\nLocation: https://evil.test",
+    "a b",
+    "-leading-hyphen",
+    "trailing-hyphen-",
+    "double--hyphen",
+    "x".repeat(121),
+    "a",
+    "",
+    "   ",
+    // A lone malformed escape makes decodeURIComponent throw.
+    "%",
+    "%zz",
+  ];
+
+  for (const attempt of hostile) {
+    // Asserting null, not merely "inert if it was accepted". The weaker form
+    // passed even with the length bounds deleted, which is no test at all.
+    it(`refuses ${JSON.stringify(attempt)} as an address`, () => {
+      expect(normalizeSlug(attempt)).toBeNull();
+    });
+
+    it(`refuses ${JSON.stringify(attempt)} as a ticker`, () => {
+      expect(normalizeSymbol(attempt)).toBeNull();
+    });
+  }
+
+  it("accepts the addresses a company legitimately has", () => {
+    expect(normalizeSlug("dangote-cement")).toBe("dangote-cement");
+    expect(normalizeSlug("DANGOTE-CEMENT")).toBe("dangote-cement");
+    expect(normalizeSlug("  dangote-cement  ")).toBe("dangote-cement");
+    expect(normalizeSlug("updc")).toBe("updc");
+  });
+
+  it("accepts a ticker however it is typed", () => {
+    expect(normalizeSymbol("dangcem")).toBe("DANGCEM");
+    expect(normalizeSymbol("DANGCEM")).toBe("DANGCEM");
+    expect(normalizeSymbol(" gtco ")).toBe("GTCO");
+    expect(normalizeSymbol("GTCO.A")).toBe("GTCO.A");
+  });
+
+  it("never throws, whatever arrives in the path", () => {
+    for (const attempt of [...hostile, "\uD800", "%E0%A4%A", "\u0000"]) {
+      expect(() => normalizeSlug(attempt)).not.toThrow();
+      expect(() => normalizeSymbol(attempt)).not.toThrow();
+    }
   });
 });
 

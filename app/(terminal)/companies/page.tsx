@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { DataTable, DefinitionList, Notice, PageHeader, Panel, PanelGrid } from "@/components/terminal/ui";
 import { listCompanies, LISTING_STATUS_LABELS, type CompanyProfile } from "@/lib/data/companies";
+import { unstable_rethrow } from "next/navigation";
 
 export const metadata: Metadata = { title: "Companies" };
 
@@ -14,6 +15,9 @@ export default async function CompaniesPage() {
   try {
     companies = await listCompanies();
   } catch (error) {
+    // redirect(), notFound() and prerender bailouts all arrive as thrown
+    // errors; reporting one as a panel failure would swallow it.
+    unstable_rethrow(error);
     failure = error instanceof Error ? error.message : "The directory could not be loaded.";
   }
 

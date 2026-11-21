@@ -97,10 +97,59 @@ let created = 0;
 let skipped = 0;
 let failed = 0;
 
-for (const entry of companies) {
-  const name = (entry.name ?? "").trim();
+// The web form validates these in lib/companies/validation.ts, which this script
+// cannot import because it is TypeScript. The rule the database does not cover is
+// repeated here rather than trusted: companies.website is checked with
+// `^https?://`, and Postgres regexes are not newline-sensitive by default, so a
+// value whose *first line* is an http URL would be stored. Browsers strip tabs
+// and newlines out of URLs, which is how a smuggled second line becomes a live
+// scheme. Everything else — the slug shape, the symbol shape, the listing status
+// — is enforced by a constraint or by upsert_company_profile.
+//
+// Values are trimmed into a cleaned entry and the cleaned entry is what gets
+// sent. Checking one value and sending another is how a trailing newline would
+// slip past a guard that looked right.
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+
+const TEXT_FIELDS = ["name", "legalName", "industry", "listingBoard", "description", "website"];
+
+/** The entry with every text field trimmed. This is what gets sent. */
+function cleaned(entry) {
+  const out = { ...entry };
+  for (const field of TEXT_FIELDS) {
+    if (typeof out[field] === "string") {
+      const trimmed = out[field].trim();
+      out[field] = trimmed === "" ? null : trimmed;
+    }
+  }
+  return out;
+}
+
+function rejectReason(entry) {
+  if (entry.website && (CONTROL.test(entry.website) || !/^https?:\/\/\S+$/.test(entry.website))) {
+    return "website must be a single-line http:// or https:// address";
+  }
+  for (const field of TEXT_FIELDS) {
+    const value = entry[field];
+    if (typeof value === "string" && CONTROL.test(value)) {
+      return `${field} contains a line break or control character`;
+    }
+  }
+  return null;
+}
+
+for (const raw of companies) {
+  const entry = cleaned(raw);
+  const name = entry.name ?? "";
   if (!name) {
     console.log("  skip  (an entry with no name)");
+    failed += 1;
+    continue;
+  }
+
+  const bad = rejectReason(entry);
+  if (bad) {
+    console.log(`  FAIL  ${name} — ${bad}`);
     failed += 1;
     continue;
   }

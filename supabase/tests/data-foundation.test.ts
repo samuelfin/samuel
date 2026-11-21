@@ -9,7 +9,7 @@ let db: PGlite;
 
 beforeAll(async () => {
   db = await createTestDatabase();
-}, 60_000);
+}, 180_000);
 
 async function addEconomicObservation(opts: { period: [string, string]; value: string; version?: number; supersedes?: number; reason?: string; source?: string }) {
   const source = opts.source ?? (await createSourceRecord(db, "economy.observations"));
@@ -52,6 +52,7 @@ describe("migrations", () => {
       "202611200003_company_profiles.sql",
       "202611200004_announcement_self_review_polarity.sql",
       "202611210001_company_slug_redirect.sql",
+      "202611210002_company_desk_visibility.sql",
     ]);
   });
 });

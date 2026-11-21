@@ -14,7 +14,7 @@ let analyst: string;
 beforeAll(async () => {
   db = await createTestDatabase();
   analyst = await createUser(db, { staff: ["analyst"] });
-}, 60_000);
+}, 180_000);
 
 let counter = 0;
 

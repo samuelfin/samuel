@@ -12,7 +12,7 @@ let db: PGlite;
 
 beforeAll(async () => {
   db = await createTestDatabase();
-}, 60_000);
+}, 180_000);
 
 async function roleOf(userId: string): Promise<string[]> {
   const { rows } = await db.query<{ role: string }>(

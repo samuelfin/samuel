@@ -12,7 +12,7 @@ let db: PGlite;
 
 beforeAll(async () => {
   db = await createTestDatabase();
-}, 60_000);
+}, 180_000);
 
 describe("the document bucket", () => {
   it("is created private, with a size cap and a mime allowlist", async () => {

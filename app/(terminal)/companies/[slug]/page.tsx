@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound, permanentRedirect, redirect } from "next/navigation";
+import { notFound, permanentRedirect, redirect, unstable_rethrow } from "next/navigation";
 import { DefinitionList, Notice, PageHeader, Panel, PanelGrid } from "@/components/terminal/ui";
 import { listAnnouncementsForCompany } from "@/lib/data/announcements";
 import {
@@ -49,7 +49,13 @@ type Loaded<T> = { ok: true; data: T } | { ok: false; error: string };
 function panel<T>(promise: Promise<T>, whatFailed: string): Promise<Loaded<T>> {
   return promise.then<Loaded<T>, Loaded<T>>(
     (data) => ({ ok: true, data }),
-    (error: unknown) => ({ ok: false, error: error instanceof Error ? error.message : whatFailed }),
+    (error: unknown) => {
+      // Next signals redirect(), notFound() and prerender bailouts by throwing.
+      // Reporting one of those as a panel failure would strand a reader on a
+      // half-rendered page instead of sending them to the login screen.
+      unstable_rethrow(error);
+      return { ok: false, error: error instanceof Error ? error.message : whatFailed };
+    },
   );
 }
 
@@ -94,7 +100,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   try {
     const company = await getCompanyBySlug(slug);
     return { title: company?.name ?? "Company" };
-  } catch {
+  } catch (error) {
+    unstable_rethrow(error);
     // A title is not worth failing a page over.
     return { title: "Company" };
   }

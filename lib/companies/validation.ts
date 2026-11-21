@@ -79,6 +79,36 @@ export function slugify(raw: string): string {
     .replace(/-+$/g, "");
 }
 
+/**
+ * Resolving an address from the route. These decide what the company page will
+ * even look up, so the redirect destination can never be anything but a slug
+ * that passed this shape — which is what keeps /companies/[slug] from becoming
+ * an open redirect.
+ */
+/** NGX symbols are upper-case letters/digits, sometimes with a dot. Returns null if malformed. */
+export function normalizeSymbol(raw: string): string | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+  const symbol = decoded.trim().toUpperCase();
+  return /^[A-Z][A-Z0-9.]{1,14}$/.test(symbol) ? symbol : null;
+}
+
+/** Company web addresses are lowercase words joined by single hyphens. */
+export function normalizeSlug(raw: string): string | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+  const slug = decoded.trim().toLowerCase();
+  return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug) && slug.length >= 2 && slug.length <= 120 ? slug : null;
+}
+
 function clean(value: string | undefined): string | null {
   const trimmed = (value ?? "").trim();
   return trimmed === "" ? null : trimmed;
@@ -142,6 +172,19 @@ export function validateCompany(input: CompanyInput): CompanyValidation {
     }
     if (listingBoard.length < 2 || listingBoard.length > 60) {
       return { ok: false, error: "A board name is between 2 and 60 characters." };
+    }
+  }
+
+  // Checked for the same reason as the name: these are rendered as text, so a
+  // line break is not dangerous, but it is never intended and it makes a value
+  // that looks fine in a table unusable in a heading or a link label.
+  for (const [field, value] of [
+    ["legal name", input.legalName],
+    ["industry", input.industry],
+    ["description", input.description],
+  ] as const) {
+    if (typeof value === "string" && CONTROL.test(value)) {
+      return { ok: false, error: `The ${field} cannot contain line breaks or control characters.` };
     }
   }
 

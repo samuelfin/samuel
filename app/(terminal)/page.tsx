@@ -10,6 +10,7 @@ import { NGX_SECTORS } from "@/lib/catalog/markets";
 import { ACCESS_LABEL, DATASETS, PROVIDERS, RIGHTS_LABEL, isConnected, type DatasetId } from "@/lib/providers/registry";
 import { EMPTY, formatAsOf, formatDecimal } from "@/lib/format";
 import type { DataResult } from "@/lib/market-data/types";
+import { unstable_rethrow } from "next/navigation";
 
 export const metadata: Metadata = { title: "Overview" };
 
@@ -46,7 +47,14 @@ export default async function OverviewPage() {
     // One panel must not take the whole dashboard down. The loader throws so a
     // broken query is never mistaken for an empty feed; here that is caught and
     // shown as a failure in this panel, which is neither silent nor fatal.
-    listPublishedAnnouncements(5).catch(() => null),
+    // A failing feed is reported in its own panel rather than taking the
+    // Overview down — but Next signals redirect(), notFound() and prerender
+    // bailouts by throwing, and swallowing one of those would strand a reader on
+    // a half-rendered page instead of sending them to the login screen.
+    listPublishedAnnouncements(5).catch((error: unknown) => {
+      unstable_rethrow(error);
+      return null;
+    }),
     getWorkspaceItems("watchlists"),
     getAiAssistantStatus(),
   ]);

@@ -35,6 +35,8 @@ function reportFailure(what: string, error: { message?: string } | null): never 
  * server-side callers have one obvious place to import from.
  */
 export {
+  normalizeSlug,
+  normalizeSymbol,
   LISTING_STATUSES,
   LISTING_STATUS_LABELS,
   NGX_BOARDS,
@@ -161,29 +163,6 @@ function toProfile(row: CompanyRow): CompanyProfile {
   };
 }
 
-/** NGX symbols are upper-case letters/digits, sometimes with a dot. Returns null if malformed. */
-export function normalizeSymbol(raw: string): string | null {
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(raw);
-  } catch {
-    return null;
-  }
-  const symbol = decoded.trim().toUpperCase();
-  return /^[A-Z][A-Z0-9.]{1,14}$/.test(symbol) ? symbol : null;
-}
-
-/** Company web addresses are lowercase words joined by single hyphens. */
-export function normalizeSlug(raw: string): string | null {
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(raw);
-  } catch {
-    return null;
-  }
-  const slug = decoded.trim().toLowerCase();
-  return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug) && slug.length >= 2 && slug.length <= 120 ? slug : null;
-}
 
 // ---------------------------------------------------------------------------
 // Reader-facing
