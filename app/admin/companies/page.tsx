@@ -56,6 +56,7 @@ export default async function CompanyDeskPage({
         <div className="admin-context">SFI PLATFORM <span>DESK</span></div>
         <div className="admin-nav-label">RESEARCH DESK</div>
         <Link className="admin-nav active" href="/admin/companies"><i>▢</i> Companies</Link>
+        <Link className="admin-nav" href="/admin/people"><i>☰</i> Leadership</Link>
         <Link className="admin-nav" href="/admin/documents"><i>▤</i> Document review</Link>
         <Link className="admin-nav" href="/admin/announcements"><i>◈</i> Announcements</Link>
         <Link className="admin-nav" href="/admin/editorial"><i>✎</i> Research</Link>

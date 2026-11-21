@@ -186,6 +186,13 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #d8b9
 .provider-empty p{max-width:260px;color:#7d898d;font-size:8px;line-height:1.6;margin:6px 0 9px}
 .provider-gate{border:1px solid #493e2d;border-radius:2px;padding:4px 6px;color:#aa9058;font:7px var(--mono);letter-spacing:.5px}
 .audit-panel{margin-bottom:14px}
+/* Leadership desk: a note inside a form, a checkbox that is not a text field,
+   and the grouped source pickers. */
+.form-note{margin:0;color:#737e82;font-size:9px;line-height:1.6}
+.auth-form .checkbox-label{display:flex;align-items:center;gap:8px}
+.auth-form .checkbox-label input{height:15px;width:15px;padding:0;accent-color:#c19b56}
+.source-fieldset{display:grid;gap:7px;border:1px solid #2b343a;border-radius:4px;padding:11px;margin:0}
+.source-fieldset legend{padding:0 5px;color:#c3a76d;font:600 9px var(--sans);letter-spacing:.6px}
 .audit-strip{display:grid;grid-template-columns:1fr 1.4fr 1fr}
 .audit-strip>div{padding:13px 14px;border-right:1px solid #20282e;display:flex;flex-direction:column;gap:6px}
 .audit-strip>div:last-child{border-right:0}
