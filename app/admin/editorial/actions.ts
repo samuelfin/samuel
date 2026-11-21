@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireStaffRole } from "@/lib/auth/staff";
+import { approvedCompanyId } from "@/lib/data/companies";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { MAX_CLAIM, validateEditorialItem } from "@/lib/editorial/validation";
 
@@ -62,6 +63,14 @@ export async function saveDraftAction(
   const admin = createAdminClient();
   if (!admin) return { error: "Server credentials are not configured." };
 
+  // Which company this is about, so it reaches that company's page. Resolved
+  // against the register rather than trusted: a posted id is not evidence that
+  // the poster may attach anything to it. Empty means "not about one company",
+  // which a market-wide piece legitimately is.
+  const submittedCompany = text(form, "companyId");
+  const companyId = submittedCompany ? await approvedCompanyId(submittedCompany) : null;
+  if (submittedCompany && !companyId) return { error: "That is not a company on the register." };
+
   const isVideo = kind === "video";
   const row = {
     kind,
@@ -71,6 +80,7 @@ export async function saveDraftAction(
     body_text: isVideo ? null : text(form, "body"),
     video_id: validation.videoId,
     guest_name: isVideo ? text(form, "guestName") : null,
+    company_id: companyId,
     ai_assisted: aiAssisted,
     ai_model: aiAssisted ? text(form, "aiModel") : null,
   };

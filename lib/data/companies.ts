@@ -410,6 +410,31 @@ export async function listSectors(): Promise<SectorOption[]> {
   return data.map((s) => ({ id: s.id as string, name: s.name as string }));
 }
 
+/**
+ * The id back, but only if it really is an approved company.
+ *
+ * Selectors are rendered from listApprovedCompanies, but a server action is a
+ * public endpoint and a posted id is not evidence of anything. Stage 2b's review
+ * found the announcement action reading a company id no form rendered, which
+ * would have let a poster attach a record to any company; this is the check that
+ * makes offering the field safe.
+ */
+export async function approvedCompanyId(candidate: string): Promise<string | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidate)) return null;
+  await requireStaffRole(["analyst", "editor"]);
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("companies")
+    .select("id")
+    .eq("id", candidate)
+    .eq("review_status", "approved")
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data.id as string;
+}
+
 export interface CompanyOption {
   id: string;
   name: string;

@@ -12,6 +12,8 @@ import {
   MAX_HEADLINE,
 } from "@/lib/announcements/validation";
 import type { PublishableDocument } from "@/lib/data/announcements";
+import { CompanyPicker } from "@/components/admin/company-picker";
+import type { CompanyOption } from "@/lib/data/companies";
 
 const EMPTY: AnnouncementActionState = {};
 
@@ -23,9 +25,11 @@ function Message({ state }: { state: AnnouncementActionState }) {
 
 export function PublishAnnouncementForm({
   documents,
+  companies,
   correcting,
 }: {
   documents: PublishableDocument[];
+  companies: CompanyOption[];
   correcting?: { announcementId: string; documentId: string; headline: string };
 }) {
   const [state, action, pending] = useActionState(publishAnnouncementAction, EMPTY);
@@ -70,6 +74,12 @@ export function PublishAnnouncementForm({
           </select>
         </label>
       )}
+      <CompanyPicker
+        companies={companies}
+        label="Issuer"
+        hint="Optional — leave blank for a market-wide or regulator notice"
+      />
+
 
       <label>
         Category

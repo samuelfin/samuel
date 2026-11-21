@@ -17,6 +17,8 @@ import {
   VIDEO_DISCLAIMER,
 } from "@/lib/editorial/validation";
 import type { CitableSource, EditorialCitation, EditorialItem } from "@/lib/data/editorial";
+import { CompanyPicker } from "@/components/admin/company-picker";
+import type { CompanyOption } from "@/lib/data/companies";
 
 const EMPTY: EditorialActionState = {};
 
@@ -26,7 +28,15 @@ function Message({ state }: { state: EditorialActionState }) {
   return null;
 }
 
-export function DraftForm({ item, correcting }: { item?: EditorialItem; correcting?: EditorialItem }) {
+export function DraftForm({
+  item,
+  companies,
+  correcting,
+}: {
+  item?: EditorialItem;
+  companies: CompanyOption[];
+  correcting?: EditorialItem;
+}) {
   const [state, action, pending] = useActionState(saveDraftAction, EMPTY);
   const [kind, setKind] = useState<string>(item?.kind ?? correcting?.kind ?? "article");
   const [aiAssisted, setAiAssisted] = useState(item?.aiAssisted ?? false);
@@ -80,6 +90,12 @@ export function DraftForm({ item, correcting }: { item?: EditorialItem; correcti
         Title
         <input name="title" required maxLength={MAX_TITLE} defaultValue={item?.title ?? ""} />
       </label>
+
+      <CompanyPicker
+        companies={companies}
+        defaultValue={item?.companyId ?? null}
+        hint="Optional — leave blank for a market-wide piece"
+      />
 
       <label>
         Standfirst <small>Optional. One sentence under the title.</small>

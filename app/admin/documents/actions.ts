@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireStaffRole } from "@/lib/auth/staff";
+import { approvedCompanyId } from "@/lib/data/companies";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createSignedDocumentUrl } from "@/lib/documents/storage";
 import { uploadSourceDocument } from "@/lib/documents/upload";
@@ -40,8 +41,16 @@ export async function uploadDocumentAction(_prev: ActionState, form: FormData): 
     return { error: "Choose a file to upload." };
   }
 
+  // The issuer whose filing this is, so the document reaches that company's
+  // page. Resolved against the register rather than trusted. Empty is allowed:
+  // a regulator circular or a statistical release belongs to no company.
+  const submittedCompany = text(form, "companyId");
+  const companyId = submittedCompany ? await approvedCompanyId(submittedCompany) : null;
+  if (submittedCompany && !companyId) return { error: "That is not a company on the register." };
+
   const result = await uploadSourceDocument({
     file,
+    companyId,
     title: text(form, "title"),
     kind: text(form, "kind"),
     licenceClass: text(form, "licenceClass"),

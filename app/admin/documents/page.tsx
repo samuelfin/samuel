@@ -4,6 +4,7 @@ import { signOut } from "@/app/auth/actions";
 import { DocumentUploadForm, OpenDocumentButton, ReviewDecision } from "@/components/admin/document-desk";
 import { requireStaffRole } from "@/lib/auth/staff";
 import { listRecentlyReviewed, listReviewQueue, type ReviewQueueItem } from "@/lib/data/documents";
+import { listApprovedCompanies } from "@/lib/data/companies";
 
 export const metadata: Metadata = { title: "Document review" };
 
@@ -57,7 +58,11 @@ function DocumentRow({ item, decidable }: { item: ReviewQueueItem; decidable: bo
 
 export default async function DocumentReviewPage() {
   const staff = await requireStaffRole(["analyst", "editor"]);
-  const [queue, recent] = await Promise.all([listReviewQueue(), listRecentlyReviewed()]);
+  const [queue, recent, companies] = await Promise.all([
+    listReviewQueue(),
+    listRecentlyReviewed(),
+    listApprovedCompanies(),
+  ]);
 
   return (
     <main className="admin-shell">
@@ -100,7 +105,7 @@ export default async function DocumentReviewPage() {
                 <div><span>INGESTION</span><h2>Upload a document</h2></div>
                 <span className="admin-count">MANUAL</span>
               </div>
-              <DocumentUploadForm />
+              <DocumentUploadForm companies={companies} />
             </section>
 
             <section className="admin-panel">

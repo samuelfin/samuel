@@ -38,6 +38,8 @@ export interface EditorialItem {
   bodyText: string | null;
   videoId: string | null;
   guestName: string | null;
+  /** The issuer this is about, if it is about one. */
+  companyId: string | null;
   status: EditorialStatus;
   version: number;
   correctionReason: string | null;
@@ -59,6 +61,7 @@ interface Row {
   body_text: string | null;
   video_id: string | null;
   guest_name: string | null;
+  company_id: string | null;
   status: string;
   version: number;
   correction_reason: string | null;
@@ -80,7 +83,7 @@ interface CitationRow {
 }
 
 const COLUMNS =
-  "id, kind, slug, title, standfirst, body_text, video_id, guest_name, status, version, " +
+  "id, kind, slug, title, standfirst, body_text, video_id, guest_name, company_id, status, version, " +
   "correction_reason, published_at, withdrawn_at, withdrawal_reason, self_reviewed, ai_assisted, ai_model, updated_at";
 
 const CITATION_COLUMNS =
@@ -96,6 +99,7 @@ function toItem(row: Row): EditorialItem {
     bodyText: row.body_text,
     videoId: row.video_id,
     guestName: row.guest_name,
+    companyId: row.company_id,
     status: row.status as EditorialStatus,
     version: row.version,
     correctionReason: row.correction_reason,

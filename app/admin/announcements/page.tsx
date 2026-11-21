@@ -5,6 +5,7 @@ import { PublishAnnouncementForm, WithdrawAnnouncement } from "@/components/admi
 import { requireStaffRole } from "@/lib/auth/staff";
 import { ANNOUNCEMENT_CATEGORY_LABELS, type AnnouncementCategory } from "@/lib/announcements/validation";
 import { listAllAnnouncements, listPublishableDocuments } from "@/lib/data/announcements";
+import { listApprovedCompanies } from "@/lib/data/companies";
 
 export const metadata: Metadata = { title: "Announcements" };
 
@@ -24,9 +25,10 @@ export default async function AnnouncementDeskPage({
 }) {
   const staff = await requireStaffRole(["analyst", "editor"]);
   const { correct } = await searchParams;
-  const [documents, announcements] = await Promise.all([
+  const [documents, announcements, companies] = await Promise.all([
     listPublishableDocuments(),
     listAllAnnouncements(),
+    listApprovedCompanies(),
   ]);
 
   const blocked = documents.filter((d) => !d.canPublish);
@@ -80,7 +82,7 @@ export default async function AnnouncementDeskPage({
                 <div><span>{correcting ? "CORRECT" : "PUBLISH"}</span><h2>{correcting ? "Publish a correction" : "From an approved document"}</h2></div>
                 <span className="admin-count">{ready.length} READY</span>
               </div>
-              <PublishAnnouncementForm documents={documents} correcting={correcting} />
+              <PublishAnnouncementForm documents={documents} companies={companies} correcting={correcting} />
             </section>
 
             <section className="admin-panel">

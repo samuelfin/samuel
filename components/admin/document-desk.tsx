@@ -8,6 +8,8 @@ import {
   type ActionState,
 } from "@/app/admin/documents/actions";
 import { DOCUMENT_KINDS, LICENCE_CLASSES } from "@/lib/documents/validation";
+import { CompanyPicker } from "@/components/admin/company-picker";
+import type { CompanyOption } from "@/lib/data/companies";
 
 const EMPTY: ActionState = {};
 
@@ -38,7 +40,7 @@ function Message({ state }: { state: ActionState }) {
   return null;
 }
 
-export function DocumentUploadForm() {
+export function DocumentUploadForm({ companies }: { companies: CompanyOption[] }) {
   const [state, action, pending] = useActionState(uploadDocumentAction, EMPTY);
 
   return (
@@ -47,6 +49,11 @@ export function DocumentUploadForm() {
         Title
         <input name="title" required maxLength={300} placeholder="MTN Nigeria FY2025 annual report" />
       </label>
+
+      <CompanyPicker
+        companies={companies}
+        hint="Optional — leave blank for a regulator or statistics document"
+      />
 
       <label>
         Document kind

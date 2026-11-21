@@ -5,6 +5,7 @@ import { CitationManager, DraftForm, PublishItem, WithdrawItem } from "@/compone
 import { requireStaffRole } from "@/lib/auth/staff";
 import { EDITORIAL_KIND_LABELS } from "@/lib/editorial/validation";
 import { listAllEditorial, listCitableSources, listCitationsFor } from "@/lib/data/editorial";
+import { listApprovedCompanies } from "@/lib/data/companies";
 
 export const metadata: Metadata = { title: "Editorial" };
 
@@ -25,7 +26,11 @@ export default async function EditorialDeskPage({
   const staff = await requireStaffRole(["analyst", "editor"]);
   const { edit, correct } = await searchParams;
 
-  const [items, sources] = await Promise.all([listAllEditorial(), listCitableSources()]);
+  const [items, sources, companies] = await Promise.all([
+    listAllEditorial(),
+    listCitableSources(),
+    listApprovedCompanies(),
+  ]);
 
   const editing = edit ? items.find((i) => i.id === edit && i.status === "draft") : undefined;
   const correcting = correct ? items.find((i) => i.id === correct && i.status === "published") : undefined;
@@ -84,6 +89,7 @@ export default async function EditorialDeskPage({
               <DraftForm
                 key={editing?.id ?? correcting?.id ?? "new"}
                 item={editing}
+                companies={companies}
                 correcting={correcting}
               />
             </section>

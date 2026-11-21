@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireStaffRole } from "@/lib/auth/staff";
+import { approvedCompanyId } from "@/lib/data/companies";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateAnnouncement } from "@/lib/announcements/validation";
 
@@ -62,6 +63,13 @@ export async function publishAnnouncementAction(
   });
   if (!validation.ok) return { error: validation.error };
 
+  // The issuer this announcement is about. Resolved against the register, so a
+  // posted id is never taken as permission to use it. Empty is allowed: a
+  // market-wide or regulator notice belongs to no single company.
+  const submittedCompany = text(form, "companyId");
+  const companyId = submittedCompany ? await approvedCompanyId(submittedCompany) : null;
+  if (submittedCompany && !companyId) return { error: "That is not a company on the register." };
+
   const admin = createAdminClient();
   if (!admin) return { error: "Server credentials are not configured." };
 
@@ -73,10 +81,11 @@ export async function publishAnnouncementAction(
     p_announced_at: validation.announcedAtIso,
     p_summary: text(form, "summary") || null,
     p_is_price_sensitive: form.get("isPriceSensitive") === "on",
-    // Deliberately not read from the form. The desk renders no issuer selector,
-    // and accepting one here would let a poster attach an announcement to any
-    // company. A validated selector arrives with the company directory.
-    p_company_id: null,
+    // Read from the form now that there is a selector, and resolved against the
+    // register above rather than trusted. The version this replaces read a field
+    // no form rendered, which would have let a poster attach an announcement to
+    // any company at all.
+    p_company_id: companyId,
     p_supersedes_id: supersedesId || null,
     p_correction_reason: correctionReason || null,
   });
