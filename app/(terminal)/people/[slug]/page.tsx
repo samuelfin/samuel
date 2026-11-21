@@ -9,6 +9,7 @@ import {
   type PersonProfile,
 } from "@/lib/data/people";
 import { formatTenure, formatTenureDate, normalizePersonSlug } from "@/lib/people/validation";
+import { TenurePerformancePanel } from "@/components/terminal/tenure-performance-panel";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -184,17 +185,14 @@ export default async function PersonPage({ params }: Props) {
         </Panel>
 
         <Panel title="Company performance during tenure" span={12} meta="Sourced figures, no scores">
-          <div className="provider-empty">
-            <span className="provider-orbit">◌</span>
-            <strong>No data yet</strong>
-            <p>
-              Each company&apos;s reported figures will be shown here beside the dates of the
-              relevant tenure, every number citing the filing and page it came from. They are shown
-              for reference and are not a score, a ranking, or a claim that this person caused them
-              — a tenure overlaps currency moves, commodity cycles and a predecessor&apos;s
-              decisions. Financial history opens at stage 3c.
-            </p>
-          </div>
+          {/* Figures arrive at stage 3c. Until then every office reports none,
+              and the panel says so rather than implying a company has no
+              results. The shape is already the one 3d will fill, so lighting it
+              up is a matter of supplying rows — not of rewriting the panel and
+              rediscovering the rule it has to obey. */}
+          <TenurePerformancePanel
+            offices={person.offices.map((office) => ({ office, figures: [] }))}
+          />
         </Panel>
       </PanelGrid>
 
