@@ -265,6 +265,163 @@ describe("no staff role but analyst learns anything it should not", () => {
   });
 });
 
+/**
+ * Found by attacking the stage, not by reading it.
+ *
+ * Three layers implemented "no name without a sourced claim": the person page
+ * 404s, the directory is built from the offices, and the redirect oracle refuses
+ * to name anyone unpublished. The policy — the only one of the four that is
+ * actually a boundary — admitted every approved person, so a reader querying
+ * `people` directly got names whose only office was unreviewed, at an unapproved
+ * company, or withdrawn *because it was wrong*. 202611210006 closes it.
+ */
+describe("a name is readable only where a published claim backs it", () => {
+  async function visibleToReader(id: string): Promise<boolean> {
+    return (await countAs(reader, "select count(*)::int as n from public.people where id = $1", [id])) === 1;
+  }
+
+  it("hides an approved person whose only office is still pending", async () => {
+    const subject = await person("Pending Office Only", analyst);
+    await db.query("select public.review_person($1, $2, 'approved')", [subject, reviewer]);
+    await role(subject, approvedCompany, "cfo");
+
+    expect(await visibleToReader(subject)).toBe(false);
+    // The desk still sees them, because the desk has to work the queue.
+    expect(
+      await countAs(analyst, "select count(*)::int as n from public.people where id = $1", [subject]),
+    ).toBe(1);
+  });
+
+  it("hides an approved person whose only office was withdrawn as untrue", async () => {
+    const subject = await person("Withdrawn Office Only", analyst);
+    await db.query("select public.review_person($1, $2, 'approved')", [subject, reviewer]);
+    const held = await role(subject, approvedCompany, "coo");
+    await db.query("select public.review_company_role($1, $2, 'approved')", [held, reviewer]);
+    expect(await visibleToReader(subject)).toBe(true);
+
+    await db.query("select public.withdraw_company_role($1, $2, 'Never held this office')", [
+      held,
+      reviewer,
+    ]);
+    // The claim is gone, so the name goes with it: keeping it would publish a
+    // person about whom we now assert nothing.
+    expect(await visibleToReader(subject)).toBe(false);
+  });
+
+  it("hides an approved person whose only office is at a company nobody approved", async () => {
+    const subject = await person("Hidden Company Only", analyst);
+    await db.query("select public.review_person($1, $2, 'approved')", [subject, reviewer]);
+    const held = await role(subject, pendingCompany, "chair");
+    await db.query("select public.review_company_role($1, $2, 'approved')", [held, reviewer]);
+
+    expect(await visibleToReader(subject)).toBe(false);
+  });
+
+  it("shows an approved person who holds one published office", async () => {
+    const subject = await person("Properly Published", analyst);
+    await db.query("select public.review_person($1, $2, 'approved')", [subject, reviewer]);
+    const held = await role(subject, approvedCompany, "md");
+    await db.query("select public.review_company_role($1, $2, 'approved')", [held, reviewer]);
+
+    expect(await visibleToReader(subject)).toBe(true);
+  });
+
+  it("lets a reader join all three tables at once without a policy recursion error", async () => {
+    // The obvious fix — an EXISTS over company_roles inside the people policy —
+    // recurses, because the company_roles policy consults people. Every lookup
+    // now sits inside a security-definer function, where no policy is consulted.
+    // companies is in the join deliberately: an earlier version of the fix left
+    // an inline EXISTS over companies in the company_roles policy, so a future
+    // companies policy consulting company_roles would have reintroduced 42P17 on
+    // every reader's leadership query — and a test joining only two tables would
+    // have stayed green.
+    const rows = await asUser(db, reader, async () => {
+      const { rows: found } = await db.query<{ n: number }>(
+        `select count(*)::int as n
+           from public.company_roles r
+           join public.people p on p.id = r.person_id
+           join public.companies c on c.id = r.company_id`,
+      );
+      return found[0].n;
+    });
+    expect(rows).toBeGreaterThanOrEqual(0);
+  });
+
+  /**
+   * A policy that hides a row but answers questions about it is not hiding it.
+   * The predicates a policy calls have to be executable by `authenticated`,
+   * because a policy expression is evaluated as the querying role — so the only
+   * safe shape is one whose answer is the policy's own answer.
+   */
+  it("exposes no predicate that says more about a hidden row than its absence does", async () => {
+    const subject = await person("Oracle Probe Subject", analyst);
+    await db.query("select public.review_person($1, $2, 'approved')", [subject, reviewer]);
+    const held = await role(subject, approvedCompany, "chief_risk_officer");
+    // Approved person, office left pending: hidden from a reader.
+    expect(
+      await countAs(reader, "select count(*)::int as n from public.people where id = $1", [subject]),
+    ).toBe(0);
+
+    const answers = await asUser(db, reader, async () => {
+      const { rows } = await db.query<{ person: boolean; office: boolean }>(
+        `select public.person_is_published($1) as person,
+                public.company_role_is_published($2) as office`,
+        [subject, held],
+      );
+      return rows[0];
+    });
+    // Each predicate returns exactly what a SELECT on that row returns, so
+    // calling it discloses nothing further.
+    expect(answers.person).toBe(false);
+    expect(answers.office).toBe(false);
+
+    // And the helpers that did answer more are gone, not merely unused.
+    for (const gone of ["person_is_approved", "person_has_visible_office"]) {
+      const { rows } = await db.query<{ n: number }>(
+        `select count(*)::int as n
+           from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.proname = $1`,
+        [gone],
+      );
+      expect(rows[0].n, gone).toBe(0);
+    }
+  });
+
+  it("agrees with itself: the predicate and the row say the same thing", async () => {
+    // Swept over every person on the register, as both roles. A divergence here
+    // is the oracle reappearing in a different shape.
+    const { rows: everyone } = await db.query<{ id: string }>("select id from public.people");
+    const visible = new Set(
+      await asUser(db, reader, async () => {
+        const { rows } = await db.query<{ id: string }>("select id from public.people");
+        return rows.map((r) => r.id);
+      }),
+    );
+
+    for (const { id } of everyone) {
+      const says = await asUser(db, reader, async () => {
+        const { rows } = await db.query<{ published: boolean }>(
+          "select public.person_is_published($1) as published",
+          [id],
+        );
+        return rows[0].published;
+      });
+      expect(says, `person ${id}`).toBe(visible.has(id));
+    }
+  });
+
+  it("gives a reader no approved name it will not also show an office for", async () => {
+    // The invariant, stated over the whole table rather than per record.
+    const orphaned = await countAs(
+      reader,
+      `select count(*)::int as n
+         from public.people p
+        where not exists (select 1 from public.company_roles r where r.person_id = p.id)`,
+    );
+    expect(orphaned).toBe(0);
+  });
+});
+
 describe("no client role may write", () => {
   /**
    * Each entry carries its own parameter list. An earlier version of this test

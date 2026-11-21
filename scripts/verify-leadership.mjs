@@ -23,6 +23,7 @@
 // the register's history is the point — so "clean up" here means "leave it
 // published to nobody", which is what a withdrawal and a rejection do.
 import { readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -70,7 +71,9 @@ function fatal(message) {
 /** Runs `fn` as a throwaway signed-in reader, then removes the account. */
 async function asEphemeralReader(fn) {
   const email = `verify-leadership-${Date.now()}@example.test`;
-  const password = `${Math.random().toString(36).slice(2)}Aa1!${Math.random().toString(36).slice(2)}`;
+  // A credential, so a real random source rather than Math.random(). The account
+  // lives for one run in a development project, but a password is a password.
+  const password = `${randomBytes(24).toString("base64url")}Aa1!`;
   const { data: created, error } = await admin.auth.admin.createUser({
     email,
     password,
