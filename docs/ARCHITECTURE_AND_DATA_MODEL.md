@@ -5,6 +5,12 @@
 > which supersedes earlier ordering where they conflict. Sections it marks
 > **(brainstorm)** are direction, not decisions;
 > `docs/blueprints/BUSINESS_AND_FUTURE.md` holds the longer-range thinking.
+>
+> `docs/blueprints/CEO_STRATEGY.md` is the CEO's own strategy and coverage
+> documents (November 2026). It is a business brief, not a build spec: where it
+> names technology, V2 §11 records what this codebase does instead and why. What
+> it decides — the pilot universe, the indicator sets, the per-figure fields —
+> is binding, and is reflected below.
 
 ## Recommended system shape
 
@@ -103,19 +109,39 @@ security headers, CI); **2a** documents; **2b** announcements; **2c** editorial.
 - **3a Profiles.** Admin registry desk, company pickers on the document,
   announcement and editorial desks, `/companies` directory, `/companies/[slug]`,
   old-slug redirects, reader verification against the real project.
-- **3b People and leadership.** Executives and board members with tenures, each
+- **3b People and leadership** *(done)*. Executives and board members with tenures, each
   role citing the document and page, or the announcement, that evidences it. The
   leadership record is published. A "company performance during tenure" panel
   shows sourced company facts beside the tenure dates and nothing more: **no
   scores, no rankings, no causal claims**, and "No data yet" until 3c and 3d
   deliver figures. Held to the personal-data standard under Future hooks. Peer
   comparison is deferred.
-- **3c Financial entry desk.** Sector templates (bank, insurer, general), units
-  (₦'000 / million / billion) and period per figure, document plus page for every
-  value, maker-checker, and optional AI-suggested figures a human verifies.
+- **3c Financial entry desk** *(next)*. An editable **catalogue** of statement
+  templates: core indicators every company reports, plus the six sector sets from
+  the CEO's coverage document — bank, telecoms, cement and industrial, food and
+  consumer, oil and gas, power and utilities. Operating metrics (NPL ratio,
+  capital adequacy ratio, subscribers, ARPU, tonnes, boe/d, MWh) are stored as
+  **reported disclosures, never computed**: they come off a filing like any other
+  figure, because a ratio a bank discloses under its own regulator's definition is
+  not the same number as one SFI divides out, and only the disclosed one is
+  citable. Every figure carries the **original reported figure and a standardised
+  figure** side by side, currency (Airtel Africa reports in USD; any naira
+  conversion is labelled as a conversion), units (₦'000 / million / billion),
+  period — FY or interim, with its dates — consolidated or company-only,
+  audited or unaudited, restatement status, source document plus page, and a
+  verification date. Restatements are **new versions**, never edits. A year that
+  is missing or unverified reads **"Pending verification"** and is never
+  estimated. Predecessor and restructured entities (Access Holdings, BUA Foods,
+  Aradel) link to their predecessor's history, which is **kept separate** rather
+  than spliced into one series. Maker-checker throughout, solo work allowed but
+  flagged. AI-assisted extraction proposes figures from a PDF for a human to
+  verify one at a time, and anything it touched is labelled AI-assisted.
 - **3d Metrics and charts.** System-calculated margins, growth and ROE with
-  recorded formula versions, financial history charts, and a **coverage score**
-  per company.
+  recorded formula versions, financial history charts, a **coverage score** per
+  company, the five company-page tabs (Overview, Financials, Ratios, Dividends,
+  Annual Reports), and a five-year comparison download. Valuation ratios — P/E,
+  P/B, market capitalisation, dividend yield, the 52-week range — need share
+  prices and so wait for the NGX licence; accounting ratios do not and ship here.
 - **3e Dividends and corporate actions.** History, dates, charts.
 
 Financial history is **entered by an analyst first, not extracted**. Each figure
@@ -125,6 +151,17 @@ Python worker, and proposes figures into the same review queue rather than
 writing them directly — a suggestion a person approves, never a published number.
 Building the manual path first means the citation and review model is proven
 before anything automated depends on it.
+
+**The pilot universe** is the 18 companies of `SFI_ARCHITECTURE_V2.md`
+Appendix A, over FY2021–FY2025, from audited consolidated annual reports — 90
+reports, which is a collection schedule and not a claim that any of them have
+been collected. Flour Mills of Nigeria is excluded until its listing status is
+confirmed. Every ticker, listing status and sector is verified against the NGX
+directory **before** anything is seeded, because a wrong ticker is a wrong
+company and the whole register is built on identity. Seeding runs on `sfi-dev`
+only, writes names, tickers, sectors and template assignments, and writes **no
+figures**: a company with no verified figures shows "No data yet", never a
+plausible-looking number.
 
 **Later phases**
 
@@ -212,15 +249,17 @@ Use PostgreSQL `numeric` for all financial values; avoid binary floating point. 
 Built so far: source registry, companies with profile history, slug, `pre_listing`
 and listing board, instruments and identifiers, documents with review events,
 source records, versioned observations and statements, announcements, editorial
-items with citations, platform staff, and the append-only audit log.
+items with citations, platform staff, the append-only audit log, and people with
+their company roles, tenures and confirming sources.
 
 What is still to come, and when (`SFI_ARCHITECTURE_V2.md` §5):
 
 | Addition | Purpose | Phase |
 | --- | --- | --- |
-| `people`, `company_roles` — role, start, end, source | CEO and board profiles; performance during each tenure | 3b |
-| Sector statement templates — bank / insurer / general line items | Nigerian banks report interest income, loans and deposits, not "revenue" | 3c |
-| Figure entries — value, units, period, document + page, maker, checker, AI-assisted flag | Manual entry under maker-checker | 3c |
+| ~~`people`, `company_roles`~~ — built in 3b | CEO and board profiles; performance during each tenure | 3b *(done)* |
+| Statement template catalogue — core set plus six sector sets, editable as rows | Nigerian banks report interest income, loans and deposits, not "revenue"; a template added in the desk must not need a deployment | 3c |
+| Figure entries — original and standardised value, currency, units, period with dates, consolidated vs company-only, audited status, restatement status, document + page, verified date, maker, checker, AI-assisted flag | Manual entry under maker-checker, every figure traceable to a page | 3c |
+| Predecessor entity links — company ↔ predecessor, with the restructuring date and its source | Access Holdings, BUA Foods and Aradel have history under a different entity; linked, never merged | 3c |
 | `financial_metric_definitions` — formula, version, owner | Data dictionary; reproducible metrics | 3d |
 | `corporate_actions` — instrument, type, dates, per-share amount, WHT, ratios | Dividends, bonus, rights, splits | 3e |
 | `public_offers` and its milestones, documents, risks, channels | IPO centre | 4 |
@@ -357,8 +396,8 @@ around them; do not pick an answer in code.
 | --- | --- |
 | First paying customer segment: fintech API or institutional seats | Phase 9 vs Phase 10 priority |
 | How far the AI goes: explain-only, or registered advice | Phase 8 scope |
-| Pilot company list, priority figures, 3 vs 5 years of history | Phase 3c depth |
-| Who verifies figures — the maker-checker partner | Phase 3c staffing |
+| Priority figures and 3 vs 5 years of history. The **company list is settled** — the 18 of Appendix A, pending ticker and listing confirmation against the NGX directory | Phase 3c depth |
+| Who verifies figures — the maker-checker partner, and who performs entry for the 90 pilot reports | Phase 3c staffing |
 | Whether Growth Board segments (Entry / Standard) are shown separately | Whether `listing_board` becomes a CHECK constraint |
 | Budget for the NGX licence, legal advice and hosting this year | Phases 6 and 9 |
 | Whether IR services are offered, and on what independence terms | Revenue model; editorial firewall policy |
