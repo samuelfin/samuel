@@ -58,6 +58,7 @@ describe("migrations", () => {
       "202611210005_company_slug_redirect_ordering.sql",
       "202611210006_published_people_only.sql",
       "202611210007_published_predicates.sql",
+      "202611230001_financial_entry_schema.sql",
     ]);
   });
 });
@@ -246,9 +247,9 @@ describe("financial statements", () => {
       [company.rows[0].id, source],
     );
     const statementId = statement.rows[0].id;
-    await db.query("insert into public.financial_statement_lines (statement_id, line_item, value) values ($1, 'revenue', 1000)", [statementId]);
+    await db.query("insert into public.financial_statement_lines (statement_id, line_item, value_standardised) values ($1, 'revenue', 1000)", [statementId]);
     await setReview("financial_statements", statementId, "approved");
-    const error = await expectSqlError(db.query("insert into public.financial_statement_lines (statement_id, line_item, value) values ($1, 'profit_after_tax', 100)", [statementId]));
+    const error = await expectSqlError(db.query("insert into public.financial_statement_lines (statement_id, line_item, value_standardised) values ($1, 'profit_after_tax', 100)", [statementId]));
     expect(error.message).toMatch(/pending statement/);
   });
 });

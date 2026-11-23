@@ -136,6 +136,13 @@ security headers, CI); **2a** documents; **2b** announcements; **2c** editorial.
   than spliced into one series. Maker-checker throughout, solo work allowed but
   flagged. AI-assisted extraction proposes figures from a PDF for a human to
   verify one at a time, and anything it touched is labelled AI-assisted.
+  **Licences reach figures too:** the statement policy tests
+  `is_displayable_source`, so an issuer's own filings display only once the terms
+  under which SFI may show them are recorded as an active `data_licences` row
+  for `issuer_ir` and the `companies.documents` dataset is switched on.
+  Deactivating that dataset hides every figure that came through it at once,
+  which is the point of gating on the licence rather than on a copy of its terms
+  taken at entry.
 - **3d Metrics and charts.** System-calculated margins, growth and ROE with
   recorded formula versions, financial history charts, a **coverage score** per
   company, the five company-page tabs (Overview, Financials, Ratios, Dividends,

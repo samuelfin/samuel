@@ -82,7 +82,7 @@ export async function asUser<T>(db: PGlite, userId: string, fn: () => Promise<T>
   }
 }
 
-export type StaffRole = "editor" | "analyst" | "fact_checker" | "publisher";
+export type StaffRole = "editor" | "analyst" | "fact_checker" | "publisher" | "financial_analyst";
 
 export async function createUser(
   db: PGlite,
