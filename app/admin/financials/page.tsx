@@ -7,6 +7,7 @@ import {
   StatementForm,
   StatementPicker,
   SuccessionDesk,
+  SuggestionQueue,
   TemplateAssignmentForm,
 } from "@/components/admin/financials-desk";
 import { requireStaffRole } from "@/lib/auth/staff";
@@ -19,11 +20,13 @@ import {
   listCitableFilings,
   listStatementsForDesk,
   listSuccessionsForDesk,
+  listSuggestionBatchesForDesk,
   listTemplateAssignments,
   listTemplateLines,
   listTemplates,
 } from "@/lib/data/financials";
 import { STATEMENT_TYPES, type StatementType } from "@/lib/financials/validation";
+import { availableExtractors } from "@/lib/adapters/extraction";
 
 export const metadata: Metadata = { title: "Figures" };
 
@@ -51,7 +54,17 @@ export default async function FiguresDeskPage({
   const companyId = params.company && UUID.test(params.company) ? params.company : "";
   const periodEnd = params.period ?? "";
 
-  const [statements, templates, templateLines, assignments, companies, filings, announcements, successions] =
+  const [
+    statements,
+    templates,
+    templateLines,
+    assignments,
+    companies,
+    filings,
+    announcements,
+    successions,
+    suggestionBatches,
+  ] =
     await Promise.all([
       listStatementsForDesk(),
       listTemplates(),
@@ -61,6 +74,7 @@ export default async function FiguresDeskPage({
       listCitableFilings(),
       listCitableAnnouncements(),
       listSuccessionsForDesk(),
+      listSuggestionBatchesForDesk(),
     ]);
 
   const revising = revisingId ? await getStatementForDesk(revisingId) : null;
@@ -271,6 +285,34 @@ export default async function FiguresDeskPage({
                 <span className="admin-count">FY2021–FY2025</span>
               </div>
               <CoverageGrid cells={cells} years={COVERAGE_YEARS} statementType={statementType} />
+            </section>
+
+            <section className="admin-panel">
+              <div className="admin-panel-heading">
+                <div>
+                  <span>SUGGESTED</span>
+                  <h2>Figures a machine proposed</h2>
+                </div>
+                <span className="admin-count">
+                  {suggestionBatches.filter((b) => b.status === "open").length} OPEN
+                </span>
+              </div>
+              <p className="form-note">
+                A suggestion is not a figure. Each one is confirmed against the page, one at a time —
+                there is no accept-all, because a button that accepts forty unexamined figures is this
+                feature&apos;s whole risk in one control. Anything accepted still goes in through the
+                entry form, flagged AI-assisted for the life of the record. No model is wired up: the
+                only reader is pasted text, behind the adapter every outside service goes through.
+              </p>
+              <SuggestionQueue
+                batches={suggestionBatches}
+                companies={companies}
+                filings={filings}
+                extractors={availableExtractors().map((e) => ({ id: e.id, label: e.label, model: e.model }))}
+                companyId={formCompanyId}
+                statementType={statementType}
+                periodEnd={formPeriodEnd}
+              />
             </section>
 
             <section className="admin-panel">

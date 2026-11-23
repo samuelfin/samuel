@@ -705,6 +705,147 @@ export async function listSuccessionsForDesk(): Promise<SuccessionForDesk[]> {
   }));
 }
 
+export interface SuggestedFigure {
+  id: string;
+  lineItem: string;
+  label: string;
+  unitLabel: string;
+  valueReported: number;
+  presentation: Presentation;
+  magnitude: Magnitude | null;
+  sourcePage: number;
+  rawLabel: string | null;
+  rawValue: string | null;
+  confidence: number | null;
+  status: "pending" | "accepted" | "rejected";
+  decisionReason: string | null;
+}
+
+export interface SuggestionBatch {
+  id: string;
+  companyId: string;
+  companyName: string;
+  documentId: string;
+  documentTitle: string | null;
+  statementType: StatementType;
+  periodType: string;
+  periodStart: string;
+  periodEnd: string;
+  currency: string;
+  magnitude: Magnitude;
+  provider: string;
+  model: string | null;
+  promptVersion: string | null;
+  status: "open" | "closed";
+  statementId: string | null;
+  note: string | null;
+  createdAt: string;
+  suggestions: SuggestedFigure[];
+}
+
+/**
+ * The desk's suggestion queue. Row-level security admits only the figures desk,
+ * so there is no filter here restating that: a proposal is a machine's guess at
+ * a company's results and no reader has any business seeing one.
+ */
+const SUGGESTION_COLUMNS =
+  "id, company_id, document_id, statement_type, period_type, period_start, period_end, currency, " +
+  "magnitude, provider, model, prompt_version, status, statement_id, note, created_at, " +
+  "companies(name), documents(title), " +
+  "figure_suggestions(id, line_item, value_reported, presentation, magnitude, source_page, " +
+  "raw_label, raw_value, confidence, status, decision_reason)";
+
+interface SuggestionBatchRow {
+  id: string;
+  company_id: string;
+  document_id: string;
+  statement_type: StatementType;
+  period_type: string;
+  period_start: string;
+  period_end: string;
+  currency: string;
+  magnitude: Magnitude;
+  provider: string;
+  model: string | null;
+  prompt_version: string | null;
+  status: "open" | "closed";
+  statement_id: string | null;
+  note: string | null;
+  created_at: string;
+  companies: { name: string } | null;
+  documents: { title: string } | null;
+  figure_suggestions: Array<{
+    id: string;
+    line_item: string;
+    value_reported: number | string;
+    presentation: Presentation;
+    magnitude: Magnitude | null;
+    source_page: number;
+    raw_label: string | null;
+    raw_value: string | null;
+    confidence: number | string | null;
+    status: "pending" | "accepted" | "rejected";
+    decision_reason: string | null;
+  }> | null;
+}
+
+export async function listSuggestionBatchesForDesk(limit = 40): Promise<SuggestionBatch[]> {
+  await requireStaffRole(["financial_analyst"]);
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("figure_suggestion_batches")
+    .select(SUGGESTION_COLUMNS)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error || !data) reportFailure("the suggestion queue", error);
+
+  const definitions = new Map((await listTemplateLines()).map((line) => [line.lineItem, line]));
+
+  return (data as unknown as SuggestionBatchRow[]).map((row) => {
+    const suggestions = (row.figure_suggestions ?? []).map((suggestion) => {
+      const definition = definitions.get(suggestion.line_item);
+      return {
+        id: suggestion.id,
+        lineItem: suggestion.line_item,
+        label: definition?.label ?? suggestion.line_item,
+        unitLabel: definition?.unitLabel ?? "",
+        valueReported: toNumber(suggestion.value_reported),
+        presentation: suggestion.presentation,
+        magnitude: suggestion.magnitude,
+        sourcePage: suggestion.source_page,
+        rawLabel: suggestion.raw_label,
+        rawValue: suggestion.raw_value,
+        confidence: suggestion.confidence === null ? null : toNumber(suggestion.confidence),
+        status: suggestion.status,
+        decisionReason: suggestion.decision_reason,
+      };
+    });
+    suggestions.sort((a, b) => a.label.localeCompare(b.label));
+
+    return {
+      id: row.id,
+      companyId: row.company_id,
+      companyName: row.companies?.name ?? "Unknown company",
+      documentId: row.document_id,
+      documentTitle: row.documents?.title ?? null,
+      statementType: row.statement_type,
+      periodType: row.period_type,
+      periodStart: row.period_start,
+      periodEnd: row.period_end,
+      currency: row.currency,
+      magnitude: row.magnitude,
+      provider: row.provider,
+      model: row.model,
+      promptVersion: row.prompt_version,
+      status: row.status,
+      statementId: row.statement_id,
+      note: row.note,
+      createdAt: row.created_at,
+      suggestions,
+    };
+  });
+}
+
 export interface CoverageCell {
   companyId: string;
   companyName: string;

@@ -3,6 +3,9 @@
 import { useActionState, useMemo, useState } from "react";
 import {
   assignTemplateAction,
+  closeBatchAction,
+  decideSuggestionAction,
+  queueSuggestionsAction,
   recordSuccessionAction,
   reviewStatementAction,
   reviewSuccessionAction,
@@ -41,6 +44,7 @@ import type {
   CoverageCell,
   StatementForDesk,
   SuccessionForDesk,
+  SuggestionBatch,
   TemplateLine,
   TemplateSummary,
 } from "@/lib/data/financials";
@@ -584,6 +588,233 @@ export function TemplateAssignmentForm({
         </table>
       ) : (
         <p className="empty-state">No company is assigned a sector template yet.</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The suggestion queue.
+ *
+ * There is no accept-all button, and that absence is the design. A single
+ * control that accepts forty unexamined figures is this feature's whole risk,
+ * and the database could not serve one either: decide_figure_suggestion takes
+ * one suggestion. Forty figures is forty decisions, which is the cost of being
+ * able to say a person checked each one against the page.
+ *
+ * Accepting a suggestion does not record a figure. It marks the proposal
+ * accepted; the figures still go in through the entry form, where they are
+ * flagged AI-assisted for the life of the record.
+ */
+export function SuggestionQueue({
+  batches,
+  companies,
+  filings,
+  extractors,
+  companyId,
+  statementType,
+  periodEnd,
+}: {
+  batches: readonly SuggestionBatch[];
+  companies: readonly CompanyForDesk[];
+  filings: readonly CitableFiling[];
+  extractors: readonly { id: string; label: string; model: string | null }[];
+  companyId: string;
+  statementType: StatementType;
+  periodEnd: string;
+}) {
+  const [queueState, queueAction, queueing] = useActionState(queueSuggestionsAction, EMPTY);
+  const [decideState, decideAction, deciding] = useActionState(decideSuggestionAction, EMPTY);
+  const [closeState, closeAction, closing] = useActionState(closeBatchAction, EMPTY);
+
+  const open = batches.filter((b) => b.status === "open");
+
+  if (extractors.length === 0) {
+    return (
+      <p className="empty-state">
+        Figure extraction is switched off. Nothing queues, and nothing already queued can be decided
+        until it is switched back on.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <form action={queueAction} className="auth-form">
+        <input type="hidden" name="statementType" value={statementType} />
+        <div className="form-row">
+          <label>
+            Company
+            <select name="companyId" required defaultValue={companyId}>
+              <option value="">Choose…</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Reporting date
+            <input type="date" name="periodEnd" required defaultValue={periodEnd} />
+          </label>
+          <label>
+            Period
+            <select name="periodType" defaultValue="FY">
+              {PERIOD_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="form-row">
+          <label>
+            The filing it was read from
+            <select name="documentId" required defaultValue="">
+              <option value="">Choose…</option>
+              {filings.map((filing) => (
+                <option key={filing.id} value={filing.id}>
+                  {filing.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Read by
+            <select name="provider" defaultValue={extractors[0]?.id}>
+              {extractors.map((extractor) => (
+                <option key={extractor.id} value={extractor.id}>
+                  {extractor.label}
+                </option>
+              ))}
+            </select>
+            <small>Recorded on the run, so a wrong figure can be traced to what produced it.</small>
+          </label>
+          <label>
+            Scale
+            <select name="magnitude" defaultValue="thousands">
+              {MAGNITUDES.map((option) => (
+                <option key={option} value={option}>
+                  {MAGNITUDE_LABELS[option]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <label>
+          The figures, pasted
+          <textarea
+            name="pastedText"
+            rows={6}
+            placeholder={"Revenue 1,234,567 p.40\nCost of sales (400,000) p.41\nProfit after tax 200,000 p.40"}
+          />
+          <small>
+            One figure per line: a label this desk knows, the figure as printed, and the page. A line
+            that cannot be read with certainty is left out rather than guessed at.
+          </small>
+        </label>
+
+        <button type="submit" disabled={queueing}>
+          {queueing ? "Reading…" : "Queue for checking"}
+        </button>
+        <Message state={queueState} />
+      </form>
+
+      <Message state={decideState} />
+      <Message state={closeState} />
+
+      {open.length === 0 ? (
+        <p className="empty-state">Nothing queued. Suggestions are never entered without being checked.</p>
+      ) : (
+        open.map((batch) => {
+          const pending = batch.suggestions.filter((s) => s.status === "pending");
+          const accepted = batch.suggestions.filter((s) => s.status === "accepted");
+          return (
+            <article key={batch.id} className="review-item">
+              <h3>
+                {batch.companyName} — {STATEMENT_TYPE_LABELS[batch.statementType]} {batch.periodType} to{" "}
+                {batch.periodEnd}
+              </h3>
+              <p className="muted">
+                Read by {batch.provider}
+                {batch.model ? ` · model ${batch.model}` : " · no model"}
+                {batch.promptVersion ? ` · prompt ${batch.promptVersion}` : ""} · from{" "}
+                {batch.documentTitle ?? "a filing on file"} · {batch.currency},{" "}
+                {MAGNITUDE_LABELS[batch.magnitude].toLowerCase()}
+              </p>
+              <p className="muted">
+                {pending.length} to check, {accepted.length} accepted. Accepting one does not record a
+                figure: enter the statement to do that.
+              </p>
+
+              <table className="figure-table">
+                <thead>
+                  <tr>
+                    <th>Figure</th>
+                    <th>Read as</th>
+                    <th>On the page</th>
+                    <th>Page</th>
+                    <th>Decision</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batch.suggestions.map((suggestion) => (
+                    <tr key={suggestion.id}>
+                      <td>{suggestion.label}</td>
+                      <td>
+                        {formatReported(
+                          suggestion.valueReported,
+                          suggestion.magnitude ?? batch.magnitude,
+                          suggestion.unitLabel,
+                        )}
+                        {suggestion.presentation === "bracketed" ? " (bracketed)" : ""}
+                      </td>
+                      <td>
+                        {suggestion.rawLabel ? <small>{suggestion.rawLabel}</small> : null}
+                        {suggestion.rawValue ?? "—"}
+                      </td>
+                      <td>{suggestion.sourcePage}</td>
+                      <td>
+                        {suggestion.status === "pending" ? (
+                          <form action={decideAction} className="inline-form">
+                            <input type="hidden" name="suggestionId" value={suggestion.id} />
+                            <input name="reason" maxLength={500} placeholder="Reason to reject" />
+                            <button type="submit" name="decision" value="accepted" disabled={deciding}>
+                              Accept
+                            </button>
+                            <button type="submit" name="decision" value="rejected" disabled={deciding}>
+                              Reject
+                            </button>
+                          </form>
+                        ) : (
+                          <>
+                            {suggestion.status === "accepted" ? "Accepted" : "Rejected"}
+                            {suggestion.decisionReason ? <small>{suggestion.decisionReason}</small> : null}
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <form action={closeAction} className="inline-form">
+                <input type="hidden" name="batchId" value={batch.id} />
+                <label>
+                  Statement it produced <small>Optional</small>
+                  <input name="statementId" placeholder="Statement id, once entered" />
+                </label>
+                <button type="submit" disabled={closing}>
+                  Close this run
+                </button>
+              </form>
+            </article>
+          );
+        })
       )}
     </div>
   );

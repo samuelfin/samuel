@@ -60,6 +60,7 @@ describe("migrations", () => {
       "202611210007_published_predicates.sql",
       "202611230001_financial_entry_schema.sql",
       "202611230002_succession_announcement_status.sql",
+      "202611230003_figure_suggestions.sql",
     ]);
   });
 });

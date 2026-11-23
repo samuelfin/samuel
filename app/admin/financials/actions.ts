@@ -5,8 +5,10 @@ import { redirect } from "next/navigation";
 import { requireStaffRole } from "@/lib/auth/staff";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assignmentFor, listTemplateAssignments, listTemplateLines } from "@/lib/data/financials";
+import { getExtractor } from "@/lib/adapters/extraction";
 import {
   type LineInput,
+  parsePeriod,
   validateStatement,
   validateSuccession,
   validateTemplateAssignment,
@@ -89,6 +91,23 @@ function explainSuccession(error: { code?: string; message?: string; details?: s
   if (error.code === "23503") return "One of those companies is no longer on the register.";
   if (error.code === "23514") return error.message ?? "That is not allowed.";
   return "The succession could not be saved.";
+}
+
+function explainSuggestion(error: { code?: string; message?: string; details?: string }): string {
+  const detail = `${error.message ?? ""} ${error.details ?? ""}`;
+  if (error.code === "42501") {
+    if (/fixed once proposed/i.test(detail)) {
+      return "A suggested figure cannot be edited. Reject it and queue a fresh reading.";
+    }
+    return "You may not queue or review suggested figures.";
+  }
+  if (error.code === "23505") return "That figure was proposed twice in one reading.";
+  if (error.code === "23503") {
+    if (/no figure called/i.test(detail)) return "The reading proposed a figure that is not in the catalogue.";
+    return "Something that reading refers to no longer exists.";
+  }
+  if (error.code === "23514") return error.message ?? "That is not allowed.";
+  return "The suggestion could not be saved.";
 }
 
 function revalidateFinancials(companySlug?: string | null) {
@@ -245,6 +264,161 @@ export async function reviewStatementAction(
         ? "Approved. These figures can now be seen, and any earlier version of the same period is superseded."
         : "Rejected. Readers cannot see these figures.",
   };
+}
+
+/**
+ * Queue a run of the extractor.
+ *
+ * The extractor is reached through the adapter, never called directly, and the
+ * adapter's only implementation reads text a person pasted. Its id is recorded
+ * as the batch's provider, so the register says what actually produced a
+ * suggestion rather than implying a model was involved.
+ */
+export async function queueSuggestionsAction(
+  _prev: FinancialsActionState,
+  form: FormData,
+): Promise<FinancialsActionState> {
+  const staff = await requireStaffRole(["financial_analyst"]);
+
+  const companyId = field(form, "companyId");
+  const documentId = field(form, "documentId");
+  const statementType = field(form, "statementType");
+  const periodEnd = field(form, "periodEnd");
+  const text = typeof form.get("pastedText") === "string" ? (form.get("pastedText") as string) : "";
+
+  if (!UUID.test(companyId)) return { error: "Choose the company these figures belong to." };
+  if (!UUID.test(documentId)) return { error: "Choose the filing the figures were read from." };
+  if (!text.trim()) return { error: "Paste the figures to read." };
+
+  const extractor = getExtractor(field(form, "provider") || "manual_paste");
+  if (!extractor) {
+    return { error: "Figure extraction is switched off, or that extractor is not one we have." };
+  }
+
+  const period = parsePeriod({ periodEnd, periodStart: field(form, "periodStart") });
+  if (!period) return { error: "Give the period's reporting date." };
+
+  const { definitions } = await templateContext(companyId, statementType, period.periodEnd);
+  if (definitions.length === 0) {
+    return { error: "This company has no figures defined for that statement. Assign a template first." };
+  }
+
+  const result = await extractor.extract({
+    documentId,
+    text,
+    allowedLineItems: definitions.map((line) => ({ lineItem: line.lineItem, label: line.label })),
+  });
+
+  if (result.figures.length === 0) {
+    return {
+      error:
+        "Nothing could be read from that. Each line needs a label this desk knows, a figure and a page — " +
+        'for example "Revenue 1,234,567 p.40".',
+    };
+  }
+
+  const admin = createAdminClient();
+  if (!admin) return { error: "Server credentials are not configured." };
+
+  const { error } = await admin.rpc("record_figure_suggestions", {
+    actor_user: staff.userId,
+    p_company_id: companyId,
+    p_document_id: documentId,
+    p_statement_type: statementType,
+    p_period_type: field(form, "periodType") || "FY",
+    p_period_start: period.periodStart,
+    p_period_end: period.periodEnd,
+    p_currency: field(form, "currency") || "NGN",
+    p_magnitude: field(form, "magnitude") || "thousands",
+    p_provider: extractor.id,
+    p_suggestions: result.figures.map((figure) => ({
+      line_item: figure.lineItem,
+      value_reported: figure.valueReported,
+      presentation: figure.presentation,
+      magnitude: figure.magnitude,
+      source_page: figure.sourcePage,
+      raw_label: figure.rawLabel,
+      raw_value: figure.rawValue,
+      confidence: figure.confidence,
+    })),
+    p_model: extractor.model,
+    p_prompt_version: extractor.promptVersion,
+    p_note: null,
+  });
+
+  if (error) return { error: explainSuggestion(error) };
+
+  revalidateFinancials();
+  const skipped = result.unmatched.length;
+  return {
+    notice:
+      `${result.figures.length} figure(s) queued for checking` +
+      (skipped > 0 ? `, and ${skipped} line(s) left out because they could not be read with certainty.` : ".") +
+      " Nothing has been entered: each one has to be confirmed against the page.",
+  };
+}
+
+export async function decideSuggestionAction(
+  _prev: FinancialsActionState,
+  form: FormData,
+): Promise<FinancialsActionState> {
+  const staff = await requireStaffRole(["financial_analyst"]);
+
+  const suggestionId = field(form, "suggestionId");
+  const decision = field(form, "decision");
+  const reason = field(form, "reason");
+
+  if (!UUID.test(suggestionId)) return { error: "Choose a suggestion." };
+  if (decision !== "accepted" && decision !== "rejected") return { error: "Accept or reject it." };
+  if (decision === "rejected" && !reason) {
+    return { error: "Say why it is wrong. That is what stops the next one being wrong the same way." };
+  }
+
+  const admin = createAdminClient();
+  if (!admin) return { error: "Server credentials are not configured." };
+
+  const { error } = await admin.rpc("decide_figure_suggestion", {
+    target_suggestion: suggestionId,
+    actor_user: staff.userId,
+    p_decision: decision,
+    p_reason: reason || null,
+  });
+
+  if (error) return { error: explainSuggestion(error) };
+
+  revalidateFinancials();
+  return {
+    notice:
+      decision === "accepted"
+        ? "Accepted. It is still not a figure: enter the statement to record it."
+        : "Rejected, with the reason kept.",
+  };
+}
+
+export async function closeBatchAction(
+  _prev: FinancialsActionState,
+  form: FormData,
+): Promise<FinancialsActionState> {
+  const staff = await requireStaffRole(["financial_analyst"]);
+
+  const batchId = field(form, "batchId");
+  const statementId = field(form, "statementId");
+  if (!UUID.test(batchId)) return { error: "Choose a run to close." };
+  if (statementId && !UUID.test(statementId)) return { error: "That is not a statement." };
+
+  const admin = createAdminClient();
+  if (!admin) return { error: "Server credentials are not configured." };
+
+  const { error } = await admin.rpc("close_suggestion_batch", {
+    target_batch: batchId,
+    actor_user: staff.userId,
+    p_statement_id: statementId || null,
+  });
+
+  if (error) return { error: explainSuggestion(error) };
+
+  revalidateFinancials();
+  return { notice: statementId ? "Closed against that statement." : "Closed." };
 }
 
 export async function recordSuccessionAction(
