@@ -138,12 +138,12 @@ Built so far: source registry, companies (+ profile history, slug, `pre_listing`
 - **2b Announcements** — publish from approved documents, corrections, withdrawals, `/news`.
 - **2c Editorial** — articles, analysis, YouTube video, citations, AI-assisted label, `/research`. 22 attack tests.
 
-### Phase 3 — Company intelligence (in progress)
+### Phase 3 — Company intelligence (in progress — next: 3c)
 | Step | Scope |
 |---|---|
-| **3a** Profiles **(done)** | Admin desk, company pickers on existing desks, `/companies` directory, `/companies/[slug]`, old-slug redirects, reader verification |
-| **3b** People & leadership **(next)** | Executives and board with tenures, each role citing a document + page or an announcement; leadership record published; "company performance during tenure" panel showing sourced company facts beside the tenure dates. Facts only, opinion labelled: **no scores, rankings or causal claims**. Peer comparison deferred |
-| **3c** Financial entry desk | Sector templates, units/period, document + page per figure, maker-checker, optional AI-suggested figures verified by a human |
+| **3a** Profiles *(done)* | Admin desk, company pickers on existing desks, `/companies` directory, `/companies/[slug]`, old-slug redirects, reader verification |
+| **3b** People & leadership *(done)* | Executives and board with tenures, each role citing a document + page or an announcement; leadership record published; "company performance during tenure" panel showing sourced company facts beside the tenure dates. Facts only, opinion labelled: **no scores, rankings or causal claims**. Peer comparison deferred |
+| **3c** Financial entry desk **(next)** | Editable template catalogue: core set plus six sector sets (bank, telecoms, cement/industrial, food & consumer, oil & gas, power). Operating metrics stored as **reported disclosures, never computed**. Per figure: reported value beside standardised value, currency as reported (no conversion here), units, FY period with dates, consolidated vs company-only, audited status, restatement status, document + page, verified date. Issuer restatement distinguished from an SFI correction. Missing year reads **"Pending verification"**. Predecessors linked by a succession record, history kept separate. Maker-checker under a distinct `financial_analyst` role, solo flagged. AI suggestions queued for one-at-a-time human verification; model deferred behind the adapter |
 | **3d** Metrics & charts | System-calculated margins, growth, ROE etc. with formula versions; financial history charts; **coverage score** per company |
 | **3e** Dividends & corporate actions | History, charts, dates |
 
@@ -245,12 +245,84 @@ Decision rule: the financial side owns **meaning**; the technical side owns **ho
 
 ---
 
-## 11. Open decisions
+## 11. CEO strategy (Nov 2026): how it fits
+
+The CEO's "Master Technology Integration & Provider Procurement Strategy" and "Recommended company coverage" documents were reviewed against this plan.
+
+### Agreed and already reflected
+- One infrastructure, two products: **SAMUEL Public** (free) and **SAMUEL Institutional** (paid), with different permissions on one database.
+- Own the data and calculations first; buy outside intelligence only when it gives a measurable advantage.
+- No AI dependency at launch; AI-ready architecture.
+- Standard metadata on every figure; deterministic, tested, versioned calculation library.
+- Licensing and regulatory workstream; "information and research provider" positioning; no trading, custody or personalised advice.
+- Code, schema, calculation library, docs and credentials belong to SAMUEL.
+- Billing and institutional access designed from the start (entitlements, Phase 5).
+- Nigeria first, database designed for other African markets later.
+
+### Adopted from the CEO's documents (new)
+| Item | Where |
+|---|---|
+| **Pilot universe: 18 companies** (Appendix A), **FY2021–FY2025** annual audited consolidated reports (90 reports) | Seed in 3c; data entry after 3c |
+| **Sector-specific indicator sets**: banks, telecoms, cement/industrial, food & consumer, oil & gas, power | 3c templates (catalogue, editable) |
+| Per-figure fields: **original reported figure and standardised figure**, currency, unit, period, source document + page, consolidated vs company-only, **audited/unaudited**, **restatement status**, **verified date** | 3c |
+| Missing or unverified year shown as **"Pending verification"**, never estimated | 3c/3d |
+| Company page tabs: **Overview · Financials · Ratios · Dividends · Annual Reports** | 3d |
+| **Five-year comparison download (Excel / PDF)** | 3d |
+| Reporting-currency handling (e.g. Airtel Africa reports in USD; any naira conversion labelled) | 3c |
+| **Predecessor / restructured entities** (Access Holdings 2022, BUA Foods listed 2022, Aradel listed 2024) | 3c (succession record: former entity marked delisted/former, linked with an effective date and source; history kept separate) |
+| Bank, telecom, cement, oil and power **operating metrics** (NPL ratio, CAR, subscribers, ARPU, tonnes, boe/d, MWh) stored as **reported disclosures**, not computed | 3c |
+| Substantial public content **without registration**; registration unlocks watchlists, saved reports, alerts | Phase 5 |
+| **Economic calendar** (MPC, NBS releases, auctions) | Phase 5 (manual) → Phase 7 (automated) |
+| **Commodities & energy** category (EIA, World Bank Pink Sheet, UNCTAD, UN Comtrade) | Phase 7 |
+| Four ingestion pipelines: **A** API (World Bank, IMF) · **B** market feeds (NGX, FMDQ) · **C** documents (CBN, NBS, DMO, SEC, issuers) · **D** editorial/news (RSS, licensed) | Phase 7 / 9 |
+| QuantConnect **LEAN (open source)** for backtesting and portfolio analytics, no live trading | Phase 10 |
+| AlphaSense small-team pilot; S&P/Kensho only if Nigerian coverage is confirmed | Phase 10, evaluated |
+| **Technical Requirements Specification (TRS)** generated from the actual codebase | After 3c |
+
+### Where this plan differs, and why
+| CEO document | This plan | Reason |
+|---|---|---|
+| FastAPI backend, Keycloak, Celery + Redis, TimescaleDB, AWS | Next.js server + **Supabase** (Postgres, Auth, Storage) + Python workers; Vercel → Azure | Already built and security-tested (700+ tests). Same capabilities: Supabase Auth replaces Keycloak, Supabase Storage is S3-compatible, Python is used for workers and the calculation library. FastAPI is added for the Data API (Phase 9) if needed. TimescaleDB is unnecessary until real-time ticks. Cloud provider (AWS vs Azure) is a business decision; nothing in the stack prevents either. |
+| FMDQ "acquire now"; fixed income and FX in the public launch | Fixed income frozen until licences exist | No FMDQ data can be shown without its licence. Request the FMDQ proposal now in parallel with NGX; build fixed-income pages when terms are known. |
+| P/E, P/B, market cap, dividend yield, 52-week range on company pages | Shown only after NGX licence | They need share prices. Accounting ratios (margins, ROE, ROA, NIM, growth) are built from annual reports now. |
+
+## 12. Open decisions
 
 1. First paying customer segment (fintech API vs institutional seats).
 2. How far the AI goes (explain-only vs registered advice).
-3. Pilot company list, priority figures, 3 vs 5 years.
+3. ~~Pilot company list~~ *(settled: the 18 of Appendix A; FY2021–FY2025; banks first)*. Priority figures within each template remain open.
 4. Who verifies figures (maker-checker partner).
 5. Growth Board segments (Entry / Standard) shown separately?
 6. Budget for NGX licence, legal, hosting this year.
 7. Whether to offer IR services, and on what independence terms.
+8. Cloud for scale: Azure or AWS.
+9. Who performs data entry and verification for the 90 pilot reports. The `financial_analyst` staff role exists from 3c and the technical lead holds it for now; the CEO's plan says do not compromise on a dedicated Data Engineer / Financial Analyst.
+
+---
+
+## Appendix A — Pilot universe (from CEO, to be verified against the NGX directory)
+
+| # | Company | NGX ticker | Sector / template |
+|---|---|---|---|
+| 1 | Zenith Bank Plc | ZENITHBANK | Bank |
+| 2 | Guaranty Trust Holding Company (GTCO) | GTCO | Bank |
+| 3 | Access Holdings Plc | ACCESSCORP | Bank |
+| 4 | United Bank for Africa | UBA | Bank |
+| 5 | First HoldCo Plc | FIRSTHOLDCO | Bank |
+| 6 | Stanbic IBTC Holdings Plc | STANBIC | Bank |
+| 7 | MTN Nigeria Communications Plc | MTNN | Telecoms |
+| 8 | Airtel Africa Plc | AIRTELAFRI | Telecoms (reports in USD) |
+| 9 | Dangote Cement Plc | DANGCEM | Cement / industrial |
+| 10 | BUA Cement Plc | BUACEMENT | Cement / industrial |
+| 11 | Lafarge Africa Plc | WAPCO | Cement / industrial |
+| 12 | BUA Foods Plc | BUAFOODS | Food & consumer |
+| 13 | Nestlé Nigeria Plc | NESTLE | Food & consumer |
+| 14 | Nigerian Breweries Plc | NB | Food & consumer |
+| 15 | Seplat Energy Plc | SEPLAT | Oil & gas |
+| 16 | Aradel Holdings Plc | ARADEL | Oil & gas |
+| 17 | Oando Plc | OANDO | Oil & gas |
+| 18 | Geregu Power Plc | GEREGU | Power & utilities |
+
+Period: FY2021–FY2025, audited consolidated annual reports as primary source. Flour Mills excluded pending confirmation of listing status. Ticker, listing status and sector must be confirmed against the NGX directory before seeding.
+
+Report sources: NGX listed-company filings (primary), issuer investor-relations pages; Proshare and other catalogues only as finding aids, always verified against issuer or NGX originals.
