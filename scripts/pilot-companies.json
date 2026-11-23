@@ -1,0 +1,65 @@
+{
+  "comment": [
+    "The pilot universe: the 18 companies of SFI_ARCHITECTURE_V2.md Appendix A, with",
+    "name, NGX ticker, sector and the statement template each is entered under.",
+    "",
+    "Names and tickers here are what the Nigerian Exchange says today, not what the",
+    "CEO's coverage document said when it was written. Where the two differ,",
+    "priorName, priorTicker and source record the change and its evidence, and",
+    "scripts/verify-ngx-directory.mjs reports it for sign-off. A wrong ticker is a",
+    "wrong company, and this file is the identity the whole five-year history hangs",
+    "on.",
+    "",
+    "No figures here, and none seeded. A company with nothing verified reads",
+    "\"Pending verification\"."
+  ],
+  "period": { "from": "FY2021", "to": "FY2025", "basis": "audited consolidated annual reports" },
+  "excluded": [
+    {
+      "name": "Flour Mills of Nigeria Plc",
+      "ticker": "FLOURMILL",
+      "reason": "Delisted from the NGX Daily Official List with effect from 30 December 2024, following the Excelsior Shipping scheme of arrangement approved at the court-ordered meeting of 14 November 2024; trading was suspended on 16 December 2024. The CEO's document excluded it pending confirmation of its listing status, and this is that confirmation. Keep as an archived profile only.",
+      "source": "NGX delisting notice, reported 5 January 2025"
+    }
+  ],
+  "companies": [
+    { "name": "Zenith Bank Plc", "ticker": "ZENITHBANK", "sectorId": "financial_services", "template": "bank", "listingStatus": "listed" },
+    { "name": "Guaranty Trust Holding Company Plc", "ticker": "GTCO", "sectorId": "financial_services", "template": "bank", "listingStatus": "listed" },
+    { "name": "Access Holdings Plc", "ticker": "ACCESSCORP", "sectorId": "financial_services", "template": "bank", "listingStatus": "listed", "note": "Holding company established 2022. Earlier years belong to Access Bank Plc and are linked by a succession record, never merged." },
+    { "name": "United Bank for Africa Plc", "ticker": "UBA", "sectorId": "financial_services", "template": "bank", "listingStatus": "listed" },
+    {
+      "name": "First HoldCo Plc",
+      "ticker": "FIRSTHOLDCO",
+      "sectorId": "financial_services",
+      "template": "bank",
+      "listingStatus": "listed",
+      "priorName": "FBN Holdings Plc",
+      "priorTicker": "FBNH",
+      "source": "NGX market bulletin NGXREG/IRD/MB15/25/03/5, 5 March 2025: change of name implemented, \"FBNH to FirstHoldCo\". Approved at the AGM of 14 November 2024.",
+      "note": "The exchange writes the symbol FirstHoldCo; data vendors render it FIRSTHOLDCO. Stored uppercase, as every other ticker here is."
+    },
+    { "name": "Stanbic IBTC Holdings Plc", "ticker": "STANBIC", "sectorId": "financial_services", "template": "bank", "listingStatus": "listed" },
+    { "name": "MTN Nigeria Communications Plc", "ticker": "MTNN", "sectorId": "ict", "template": "telecoms", "listingStatus": "listed", "note": "Account for FX movements when comparing profits across years." },
+    { "name": "Airtel Africa Plc", "ticker": "AIRTELAFRI", "sectorId": "ict", "template": "telecoms", "listingStatus": "listed", "reportingCurrency": "USD", "note": "Reports in US dollars. Figures are stored in USD as reported; any naira equivalent is a derived conversion with its own rate and source." },
+    { "name": "Dangote Cement Plc", "ticker": "DANGCEM", "sectorId": "industrial_goods", "template": "cement_industrial", "listingStatus": "listed" },
+    { "name": "BUA Cement Plc", "ticker": "BUACEMENT", "sectorId": "industrial_goods", "template": "cement_industrial", "listingStatus": "listed" },
+    {
+      "name": "HBM Nigeria Plc",
+      "ticker": "HBMNG",
+      "sectorId": "industrial_goods",
+      "template": "cement_industrial",
+      "listingStatus": "listed",
+      "priorName": "Lafarge Africa Plc",
+      "priorTicker": "WAPCO",
+      "source": "NGX market bulletin NGXREG/IRD/MB76/26/07/09, 9 July 2026: change of name implemented, \"WAPCO to HBMNG\". Approved at the AGM of 30 April 2026, following a new certificate of incorporation from the Corporate Affairs Commission.",
+      "note": "HBM is Huaxin Building Materials, after Holcim sold its majority stake to Huaxin Cement. The pre-2026 annual reports are filed under Lafarge Africa Plc, so the documents desk will carry both names."
+    },
+    { "name": "BUA Foods Plc", "ticker": "BUAFOODS", "sectorId": "consumer_goods", "template": "food_consumer", "listingStatus": "listed", "note": "Listed 2022. Earlier history comes from pre-listing audited statements and is linked by a succession record." },
+    { "name": "Nestlé Nigeria Plc", "ticker": "NESTLE", "sectorId": "consumer_goods", "template": "food_consumer", "listingStatus": "listed" },
+    { "name": "Nigerian Breweries Plc", "ticker": "NB", "sectorId": "consumer_goods", "template": "food_consumer", "listingStatus": "listed" },
+    { "name": "Seplat Energy Plc", "ticker": "SEPLAT", "sectorId": "oil_and_gas", "template": "oil_gas", "listingStatus": "listed" },
+    { "name": "Aradel Holdings Plc", "ticker": "ARADEL", "sectorId": "oil_and_gas", "template": "oil_gas", "listingStatus": "listed", "note": "Listed 2024. Earlier figures come from historical audited statements and are linked by a succession record." },
+    { "name": "Oando Plc", "ticker": "OANDO", "sectorId": "oil_and_gas", "template": "oil_gas", "listingStatus": "listed" },
+    { "name": "Geregu Power Plc", "ticker": "GEREGU", "sectorId": "utilities", "template": "power_utilities", "listingStatus": "listed" }
+  ]
+}

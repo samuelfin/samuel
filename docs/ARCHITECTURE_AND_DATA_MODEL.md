@@ -170,6 +170,17 @@ only, writes names, tickers, sectors and template assignments, and writes **no
 figures**: a company with no verified figures shows "No data yet", never a
 plausible-looking number.
 
+The list lives in `scripts/pilot-companies.json`, carrying each company's name,
+ticker, sector and template, and — where the exchange has changed one — the
+previous name, the previous ticker and the bulletin that evidences the change.
+`npm run verify:ngx` checks it and reports differences for sign-off without
+touching anything; `npm run seed:pilot` dry-runs by default and writes only with
+`--confirm`. Two changes are already recorded: **Lafarge Africa Plc is now HBM
+Nigeria Plc, ticker WAPCO → HBMNG** (NGX bulletin of 9 July 2026), and **FBN
+Holdings Plc is First HoldCo Plc, FBNH → FirstHoldCo** (5 March 2025). Flour
+Mills of Nigeria was **delisted with effect from 30 December 2024**, which
+settles the question its exclusion was pending.
+
 **Later phases**
 
 4. **IPO centre.** Offers, versioned timelines, prospectus library, risks with
