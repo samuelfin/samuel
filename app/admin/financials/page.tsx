@@ -6,6 +6,7 @@ import {
   ReviewQueue,
   StatementForm,
   StatementPicker,
+  SuccessionDesk,
   TemplateAssignmentForm,
 } from "@/components/admin/financials-desk";
 import { requireStaffRole } from "@/lib/auth/staff";
@@ -14,8 +15,10 @@ import {
   assignmentFor,
   coverageGrid,
   getStatementForDesk,
+  listCitableAnnouncements,
   listCitableFilings,
   listStatementsForDesk,
+  listSuccessionsForDesk,
   listTemplateAssignments,
   listTemplateLines,
   listTemplates,
@@ -48,14 +51,17 @@ export default async function FiguresDeskPage({
   const companyId = params.company && UUID.test(params.company) ? params.company : "";
   const periodEnd = params.period ?? "";
 
-  const [statements, templates, templateLines, assignments, companies, filings] = await Promise.all([
-    listStatementsForDesk(),
-    listTemplates(),
-    listTemplateLines(),
-    listTemplateAssignments(),
-    listCompaniesForDesk(),
-    listCitableFilings(),
-  ]);
+  const [statements, templates, templateLines, assignments, companies, filings, announcements, successions] =
+    await Promise.all([
+      listStatementsForDesk(),
+      listTemplates(),
+      listTemplateLines(),
+      listTemplateAssignments(),
+      listCompaniesForDesk(),
+      listCitableFilings(),
+      listCitableAnnouncements(),
+      listSuccessionsForDesk(),
+    ]);
 
   const revising = revisingId ? await getStatementForDesk(revisingId) : null;
 
@@ -265,6 +271,28 @@ export default async function FiguresDeskPage({
                 <span className="admin-count">FY2021–FY2025</span>
               </div>
               <CoverageGrid cells={cells} years={COVERAGE_YEARS} statementType={statementType} />
+            </section>
+
+            <section className="admin-panel">
+              <div className="admin-panel-heading">
+                <div>
+                  <span>PREDECESSORS</span>
+                  <h2>History that belongs to a different entity</h2>
+                </div>
+                <span className="admin-count">{successions.length} LINKS</span>
+              </div>
+              <p className="form-note">
+                Access Holdings was established in 2022 and the figures before it belong to Access
+                Bank; BUA Foods listed in 2022, Aradel in 2024. The two sets of figures are linked and
+                kept apart — splicing them into one series would publish a continuity that does not
+                exist.
+              </p>
+              <SuccessionDesk
+                companies={companies}
+                filings={filings}
+                announcements={announcements}
+                successions={successions}
+              />
             </section>
 
             <section className="admin-panel">

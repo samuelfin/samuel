@@ -20,6 +20,11 @@
  * same cases through both and requires them to agree.
  */
 
+// A date recorded at the precision its source gave is one idea with one
+// implementation. It lives in the people module because leadership needed it
+// first, in 3b; duplicating the calendar check here is how the two would drift.
+import { formatTenureDate, parseTenureDate } from "@/lib/people/validation";
+
 /** Control characters, including the newline and tab a browser would strip. */
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -553,6 +558,122 @@ export function validateTemplateAssignment(
   };
 }
 
+export const SUCCESSION_RELATIONSHIPS = [
+  "holdco_reorganisation",
+  "merger",
+  "acquisition",
+  "renaming",
+  "listing_of_existing_business",
+] as const;
+export type SuccessionRelationship = (typeof SUCCESSION_RELATIONSHIPS)[number];
+
+export const SUCCESSION_LABELS: Record<SuccessionRelationship, string> = {
+  holdco_reorganisation: "A holding company was established over it",
+  merger: "It merged into the successor",
+  acquisition: "It was acquired by the successor",
+  renaming: "It was renamed",
+  listing_of_existing_business: "The existing business listed under a new entity",
+};
+
+export interface SuccessionInput {
+  predecessorCompanyId: string;
+  successorCompanyId: string;
+  relationship: string;
+  effectiveOn: string;
+  sourceKind: string;
+  documentId?: string;
+  sourcePage?: string;
+  announcementId?: string;
+  note?: string;
+}
+
+export interface PreparedSuccession {
+  predecessorCompanyId: string;
+  successorCompanyId: string;
+  relationship: SuccessionRelationship;
+  effectiveOn: string;
+  effectivePrecision: "day" | "month" | "year";
+  documentId: string | null;
+  sourcePage: number | null;
+  announcementId: string | null;
+  note: string | null;
+}
+
+export function validateSuccession(input: SuccessionInput): Validated<PreparedSuccession> {
+  if (!isUuid(input.predecessorCompanyId)) return { ok: false, error: "Choose the former company." };
+  if (!isUuid(input.successorCompanyId)) return { ok: false, error: "Choose the company that succeeded it." };
+  if (input.predecessorCompanyId === input.successorCompanyId) {
+    return { ok: false, error: "A company cannot succeed itself." };
+  }
+
+  if (!(SUCCESSION_RELATIONSHIPS as readonly string[]).includes(input.relationship)) {
+    return { ok: false, error: "Say what happened: a holding company, a merger, an acquisition or a renaming." };
+  }
+
+  // The same discipline as a tenure boundary, and the same implementation: a
+  // filing that says "2022" must not be stored as a day in January, and the
+  // shape of what was typed is what records the precision. One idea, one
+  // function — leadership simply needed it first.
+  const effective = parseTenureDate(input.effectiveOn);
+  if (!effective) {
+    return {
+      ok: false,
+      error: "Give the date it took effect as the source gives it — 2022, 2022-06 or 2022-06-12.",
+    };
+  }
+
+  const note = (input.note ?? "").trim();
+  if (note && (note.length < 2 || note.length > 500 || CONTROL.test(note))) {
+    return { ok: false, error: "That note is not usable." };
+  }
+
+  // Exactly one source, the constraint the database enforces: a citation
+  // pointing at two things supports neither.
+  if (input.sourceKind === "document") {
+    const documentId = (input.documentId ?? "").trim();
+    if (!isUuid(documentId)) return { ok: false, error: "Choose the filing that evidences this." };
+    const pageRaw = (input.sourcePage ?? "").trim();
+    if (!/^\d{1,5}$/.test(pageRaw) || Number(pageRaw) < 1) {
+      return { ok: false, error: "Give the page of the filing this appears on." };
+    }
+    return {
+      ok: true,
+      value: {
+        predecessorCompanyId: input.predecessorCompanyId,
+        successorCompanyId: input.successorCompanyId,
+        relationship: input.relationship as SuccessionRelationship,
+        effectiveOn: effective.date,
+        effectivePrecision: effective.precision,
+        documentId,
+        sourcePage: Number(pageRaw),
+        announcementId: null,
+        note: note || null,
+      },
+    };
+  }
+
+  if (input.sourceKind === "announcement") {
+    const announcementId = (input.announcementId ?? "").trim();
+    if (!isUuid(announcementId)) return { ok: false, error: "Choose the announcement that evidences this." };
+    return {
+      ok: true,
+      value: {
+        predecessorCompanyId: input.predecessorCompanyId,
+        successorCompanyId: input.successorCompanyId,
+        relationship: input.relationship as SuccessionRelationship,
+        effectiveOn: effective.date,
+        effectivePrecision: effective.precision,
+        documentId: null,
+        sourcePage: null,
+        announcementId,
+        note: note || null,
+      },
+    };
+  }
+
+  return { ok: false, error: "Cite either a filing and its page, or an announcement." };
+}
+
 /**
  * Checks that should make a reviewer look, and must not stop a save.
  *
@@ -622,6 +743,15 @@ export function footingWarnings(
   }
 
   return warnings;
+}
+
+/**
+ * A succession date as precisely as its source gave it: "2022", "June 2022" or
+ * a day. Re-exported so a caller does not have to reach into the people module
+ * for it.
+ */
+export function formatSourceDate(date: string, precision: "day" | "month" | "year"): string {
+  return formatTenureDate(date, precision);
 }
 
 /** A figure as the filing presented it: its own scale, not ours. */

@@ -5,7 +5,12 @@ import { redirect } from "next/navigation";
 import { requireStaffRole } from "@/lib/auth/staff";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assignmentFor, listTemplateAssignments, listTemplateLines } from "@/lib/data/financials";
-import { type LineInput, validateStatement, validateTemplateAssignment } from "@/lib/financials/validation";
+import {
+  type LineInput,
+  validateStatement,
+  validateSuccession,
+  validateTemplateAssignment,
+} from "@/lib/financials/validation";
 
 /**
  * Server actions for the figures desk.
@@ -65,6 +70,25 @@ function explain(error: { code?: string; message?: string; details?: string }): 
     return error.message ?? "That is not allowed.";
   }
   return "The figures could not be saved.";
+}
+
+function explainSuccession(error: { code?: string; message?: string; details?: string }): string {
+  const detail = `${error.message ?? ""} ${error.details ?? ""}`;
+  if (error.code === "42501") {
+    if (/fixed once recorded/i.test(detail)) {
+      return "A succession claim is fixed once recorded. Reject it and record the correct one, so the register says plainly that it was wrong.";
+    }
+    if (/other than the person/i.test(detail)) {
+      return "Someone other than the person who recorded this has to review it.";
+    }
+    return "You may not record a succession.";
+  }
+  if (error.code === "23505") {
+    return "That link between those two companies on that date is already recorded.";
+  }
+  if (error.code === "23503") return "One of those companies is no longer on the register.";
+  if (error.code === "23514") return error.message ?? "That is not allowed.";
+  return "The succession could not be saved.";
 }
 
 function revalidateFinancials(companySlug?: string | null) {
@@ -220,6 +244,89 @@ export async function reviewStatementAction(
       decision === "approved"
         ? "Approved. These figures can now be seen, and any earlier version of the same period is superseded."
         : "Rejected. Readers cannot see these figures.",
+  };
+}
+
+export async function recordSuccessionAction(
+  _prev: FinancialsActionState,
+  form: FormData,
+): Promise<FinancialsActionState> {
+  // A succession is a fact about corporate identity rather than a figure, so the
+  // register's analyst may record it as well as the figures desk — matching the
+  // function's own check.
+  const staff = await requireStaffRole(["financial_analyst", "analyst"]);
+
+  const validation = validateSuccession({
+    predecessorCompanyId: field(form, "predecessorCompanyId"),
+    successorCompanyId: field(form, "successorCompanyId"),
+    relationship: field(form, "relationship"),
+    effectiveOn: field(form, "effectiveOn"),
+    sourceKind: field(form, "sourceKind"),
+    documentId: field(form, "documentId"),
+    sourcePage: field(form, "sourcePage"),
+    announcementId: field(form, "announcementId"),
+    note: field(form, "note"),
+  });
+  if (!validation.ok) return { error: validation.error };
+
+  const admin = createAdminClient();
+  if (!admin) return { error: "Server credentials are not configured." };
+
+  const prepared = validation.value;
+  const { error } = await admin.rpc("record_company_succession", {
+    actor_user: staff.userId,
+    p_predecessor_company_id: prepared.predecessorCompanyId,
+    p_successor_company_id: prepared.successorCompanyId,
+    p_relationship: prepared.relationship,
+    p_effective_on: prepared.effectiveOn,
+    p_effective_precision: prepared.effectivePrecision,
+    p_document_id: prepared.documentId,
+    p_source_page: prepared.sourcePage,
+    p_announcement_id: prepared.announcementId,
+    p_note: prepared.note,
+  });
+
+  if (error) return { error: explainSuccession(error) };
+
+  revalidateFinancials();
+  return {
+    notice:
+      "Recorded, and waiting for review. The predecessor's figures stay under the predecessor — they are linked, never merged into one series.",
+  };
+}
+
+export async function reviewSuccessionAction(
+  _prev: FinancialsActionState,
+  form: FormData,
+): Promise<FinancialsActionState> {
+  const staff = await requireStaffRole(["financial_analyst", "analyst"]);
+
+  const successionId = field(form, "successionId");
+  const decision = field(form, "decision");
+  const reason = field(form, "reason");
+
+  if (!UUID.test(successionId)) return { error: "Choose a succession to review." };
+  if (decision !== "approved" && decision !== "rejected") return { error: "Approve or reject it." };
+  if (decision === "rejected" && !reason) return { error: "Say why the succession is being rejected." };
+
+  const admin = createAdminClient();
+  if (!admin) return { error: "Server credentials are not configured." };
+
+  const { error } = await admin.rpc("review_company_succession", {
+    target_succession: successionId,
+    actor_user: staff.userId,
+    p_decision: decision,
+    p_reason: reason || null,
+  });
+
+  if (error) return { error: explainSuccession(error) };
+
+  revalidateFinancials();
+  return {
+    notice:
+      decision === "approved"
+        ? "Approved. The link between the two entities can now be seen."
+        : "Rejected. Readers cannot see this link.",
   };
 }
 

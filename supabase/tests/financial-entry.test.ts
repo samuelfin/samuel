@@ -1352,6 +1352,66 @@ describe("succession", () => {
     expect(error.message).toMatch(/former entity, not one awaiting listing/);
   });
 
+  /**
+   * The arm of the source guard that was written, reviewed and never executed.
+   * It read `review_status` from announcements, which call that column `status`,
+   * so the first succession to cite one would have failed with 42703 — and every
+   * other succession test cites a document, so the suite stayed green. A guard
+   * with two arms needs a test down each one.
+   */
+  it("accepts a succession resting on a published announcement", async () => {
+    const predecessor = await makePredecessor("Announced Merger Plc", "announced-merger", "ANMR");
+    const source = await makeDocument(bank);
+    const { rows: announcement } = await db.query<{ id: string }>(
+      `select public.publish_announcement(
+         $1, $2, 'corporate_action', 'Scheme of arrangement completed', now() - interval '1 day',
+         null, false, $3, null, null
+       ) as id`,
+      [analyst, source, bank],
+    );
+
+    const { rows } = await db.query<{ id: string }>(
+      `select public.record_company_succession(
+         $1, $2, $3, 'merger', '2021-06-01', 'month', null, null, $4, null
+       ) as id`,
+      [financial, predecessor, bank, announcement[0].id],
+    );
+    const { rows: stored } = await db.query<{ announcement_id: string; source_page: number | null }>(
+      "select announcement_id, source_page from public.company_successions where id = $1",
+      [rows[0].id],
+    );
+    expect(stored[0].announcement_id).toBe(announcement[0].id);
+    // An announcement has no page, and the constraint says so.
+    expect(stored[0].source_page).toBeNull();
+  });
+
+  it("refuses a succession citing an announcement that is not published", async () => {
+    const predecessor = await makePredecessor("Withdrawn Notice Plc", "withdrawn-notice", "WDNT");
+    const source = await makeDocument(bank);
+    const { rows: announcement } = await db.query<{ id: string }>(
+      `select public.publish_announcement(
+         $1, $2, 'corporate_action', 'Scheme later withdrawn', now() - interval '2 days',
+         null, false, $3, null, null
+       ) as id`,
+      [analyst, source, bank],
+    );
+    await db.query(
+      "select public.withdraw_announcement($1, $2, 'The scheme did not complete.')",
+      [announcement[0].id, analyst],
+    );
+
+    const error = await expectSqlError(
+      db.query(
+        `select public.record_company_succession(
+           $1, $2, $3, 'merger', '2021-06-01', 'month', null, null, $4, null
+         )`,
+        [financial, predecessor, bank, announcement[0].id],
+      ),
+    );
+    expect(error.code).toBe("23514");
+    expect(error.message).toMatch(/published announcement/);
+  });
+
   it("insists on exactly one source", async () => {
     const predecessor = await makePredecessor("Two Sources Plc", "two-sources", "TWSR");
     const document = await makeDocument(bank);

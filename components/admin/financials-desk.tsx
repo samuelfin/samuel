@@ -3,7 +3,9 @@
 import { useActionState, useMemo, useState } from "react";
 import {
   assignTemplateAction,
+  recordSuccessionAction,
   reviewStatementAction,
+  reviewSuccessionAction,
   saveStatementAction,
   type FinancialsActionState,
 } from "@/app/admin/financials/actions";
@@ -17,12 +19,16 @@ import {
   RESTATEMENT_KINDS,
   RESTATEMENT_LABELS,
   STATEMENT_TYPES,
+  SUCCESSION_LABELS,
+  SUCCESSION_RELATIONSHIPS,
   STATEMENT_TYPE_LABELS,
   type Magnitude,
   type RestatementKind,
   type StatementType,
+  type SuccessionRelationship,
   footingWarnings,
   formatReported,
+  formatSourceDate,
   magnitudeApplies,
   parseFigure,
   parsePeriod,
@@ -34,6 +40,7 @@ import type {
   CompanyTemplateAssignment,
   CoverageCell,
   StatementForDesk,
+  SuccessionForDesk,
   TemplateLine,
   TemplateSummary,
 } from "@/lib/data/financials";
@@ -577,6 +584,231 @@ export function TemplateAssignmentForm({
         </table>
       ) : (
         <p className="empty-state">No company is assigned a sector template yet.</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Predecessor entities. Access Holdings was established in 2022 and the figures
+ * before it belong to Access Bank; BUA Foods listed in 2022 and Aradel in 2024.
+ * The link is recorded, and the two sets of figures stay apart — splicing them
+ * into one series would publish a continuity that does not exist.
+ */
+export function SuccessionDesk({
+  companies,
+  filings,
+  announcements,
+  successions,
+}: {
+  companies: readonly CompanyForDesk[];
+  filings: readonly CitableFiling[];
+  announcements: readonly { id: string; label: string }[];
+  successions: readonly SuccessionForDesk[];
+}) {
+  const [recordState, recordAction, recording] = useActionState(recordSuccessionAction, EMPTY);
+  const [reviewState, reviewAction, reviewing] = useActionState(reviewSuccessionAction, EMPTY);
+  const [sourceKind, setSourceKind] = useState<"document" | "announcement">("document");
+
+  const waiting = successions.filter((s) => s.reviewStatus === "pending");
+  const approved = successions.filter((s) => s.reviewStatus === "approved");
+  // A predecessor still marked pre_listing says the opposite of what it is: a
+  // company with an offer under way rather than one that is gone. The database
+  // refuses it, so the desk says so before the analyst hits that.
+  const awaitingListing = companies.filter((c) => c.listingStatus === "pre_listing");
+
+  return (
+    <div>
+      <form action={recordAction} className="auth-form">
+        <div className="form-row">
+          <label>
+            The former company
+            <select name="predecessorCompanyId" required defaultValue="">
+              <option value="">Choose…</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name}
+                  {company.listingStatus === "pre_listing" ? " — awaiting listing" : ""}
+                </option>
+              ))}
+            </select>
+            <small>
+              Marked delisted or unlisted, never &ldquo;awaiting listing&rdquo;: a predecessor is an
+              entity that is gone.
+              {awaitingListing.length > 0
+                ? ` ${awaitingListing.length} company on the register is still marked as awaiting listing.`
+                : ""}
+            </small>
+          </label>
+
+          <label>
+            The company that succeeded it
+            <select name="successorCompanyId" required defaultValue="">
+              <option value="">Choose…</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <label>
+          What happened
+          <select name="relationship" required defaultValue="">
+            <option value="">Choose…</option>
+            {SUCCESSION_RELATIONSHIPS.map((relationship) => (
+              <option key={relationship} value={relationship}>
+                {SUCCESSION_LABELS[relationship]}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          When it took effect
+          <input name="effectiveOn" required placeholder="2022, 2022-06 or 2022-06-12" />
+          <small>
+            As precisely as the source gives it, and no more. A filing that says &ldquo;2022&rdquo; is
+            stored as a year, not as a day in January.
+          </small>
+        </label>
+
+        <fieldset className="source-fieldset">
+          <legend>What evidences it</legend>
+          <label>
+            Source
+            <select
+              name="sourceKind"
+              value={sourceKind}
+              onChange={(event) => setSourceKind(event.target.value as "document" | "announcement")}
+            >
+              <option value="document">A filing, and its page</option>
+              <option value="announcement">An announcement</option>
+            </select>
+          </label>
+
+          {sourceKind === "document" ? (
+            <div className="form-row">
+              <label>
+                Filing
+                <select name="documentId" required defaultValue="">
+                  <option value="">Choose…</option>
+                  {filings.map((filing) => (
+                    <option key={filing.id} value={filing.id}>
+                      {filing.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Page
+                <input name="sourcePage" inputMode="numeric" required />
+              </label>
+            </div>
+          ) : (
+            <label>
+              Announcement
+              <select name="announcementId" required defaultValue="">
+                <option value="">Choose…</option>
+                {announcements.map((announcement) => (
+                  <option key={announcement.id} value={announcement.id}>
+                    {announcement.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <small>One or the other. A citation pointing at two things supports neither.</small>
+        </fieldset>
+
+        <label>
+          Note <small>Optional</small>
+          <input name="note" maxLength={500} placeholder="The holding company was established in 2022" />
+        </label>
+
+        <button type="submit" disabled={recording}>
+          {recording ? "Recording…" : "Record this link"}
+        </button>
+        <Message state={recordState} />
+      </form>
+
+      <Message state={reviewState} />
+
+      {waiting.length > 0 ? (
+        <table className="figure-table">
+          <caption>Waiting for review</caption>
+          <thead>
+            <tr>
+              <th>Former</th>
+              <th>Successor</th>
+              <th>What happened</th>
+              <th>Effective</th>
+              <th>Source</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {waiting.map((succession) => (
+              <tr key={succession.id}>
+                <td>{succession.predecessorName}</td>
+                <td>{succession.successorName}</td>
+                <td>
+                  {SUCCESSION_LABELS[succession.relationship as SuccessionRelationship] ??
+                    succession.relationship}
+                </td>
+                <td>{formatSourceDate(succession.effectiveOn, succession.effectivePrecision)}</td>
+                <td>
+                  {succession.documentTitle
+                    ? `${succession.documentTitle} p.${succession.sourcePage}`
+                    : (succession.announcementHeadline ?? "—")}
+                </td>
+                <td>
+                  <form action={reviewAction} className="inline-form">
+                    <input type="hidden" name="successionId" value={succession.id} />
+                    <input name="reason" maxLength={500} placeholder="Reason to reject" />
+                    <button type="submit" name="decision" value="approved" disabled={reviewing}>
+                      Approve
+                    </button>
+                    <button type="submit" name="decision" value="rejected" disabled={reviewing}>
+                      Reject
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+
+      {approved.length > 0 ? (
+        <table className="figure-table">
+          <caption>Recorded links</caption>
+          <thead>
+            <tr>
+              <th>Former</th>
+              <th>Successor</th>
+              <th>Effective</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {approved.map((succession) => (
+              <tr key={succession.id}>
+                <td>{succession.predecessorName}</td>
+                <td>{succession.successorName}</td>
+                <td>{formatSourceDate(succession.effectiveOn, succession.effectivePrecision)}</td>
+                <td>{succession.reviewSelfApproved ? <span className="self-approved-flag">SELF-REVIEWED</span> : null}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="empty-state">
+          No predecessor links recorded. Access Holdings, BUA Foods and Aradel each have history under
+          an earlier entity, and that history is linked rather than merged.
+        </p>
       )}
     </div>
   );

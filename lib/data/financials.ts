@@ -409,6 +409,35 @@ export async function listCitableFilings(limit = 200): Promise<CitableFiling[]> 
   }));
 }
 
+export interface CitableAnnouncement {
+  id: string;
+  label: string;
+}
+
+/**
+ * Published announcements, for a succession that rests on one rather than on a
+ * filing page. Scoped to the two roles that may record a succession, and
+ * filtered on `status` — the announcement desk's own column, whose vocabulary is
+ * published / superseded / withdrawn. Only the first is something a reader can
+ * still follow, and reading the wrong column name here is exactly the fault
+ * 202611230002 fixed in the database guard.
+ */
+export async function listCitableAnnouncements(limit = 100): Promise<CitableAnnouncement[]> {
+  await requireStaffRole(["financial_analyst", "analyst"]);
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("announcements")
+    .select("id, headline")
+    .eq("status", "published")
+    .order("announced_at", { ascending: false })
+    .limit(limit);
+  if (error || !data) reportFailure("published announcements", error);
+  return (data as unknown as Array<{ id: string; headline: string }>).map((row) => ({
+    id: row.id,
+    label: row.headline,
+  }));
+}
+
 export async function listTemplateAssignments(): Promise<CompanyTemplateAssignment[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -443,6 +472,96 @@ export function assignmentFor(
     )
     .sort((a, b) => b.validFrom.localeCompare(a.validFrom));
   return candidates[0] ?? null;
+}
+
+export interface SuccessionForDesk {
+  id: string;
+  predecessorId: string;
+  predecessorName: string;
+  predecessorSlug: string;
+  predecessorListingStatus: string;
+  successorId: string;
+  successorName: string;
+  successorSlug: string;
+  relationship: string;
+  effectiveOn: string;
+  effectivePrecision: "day" | "month" | "year";
+  note: string | null;
+  documentId: string | null;
+  documentTitle: string | null;
+  sourcePage: number | null;
+  announcementId: string | null;
+  announcementHeadline: string | null;
+  reviewStatus: "pending" | "approved" | "rejected";
+  reviewSelfApproved: boolean;
+  reviewedAt: string | null;
+}
+
+/**
+ * company_successions points at companies twice — the predecessor and the
+ * successor — so a bare `companies(name)` is ambiguous and PostgREST refuses the
+ * whole query. The `!column` hints are what make it resolvable, and they name the
+ * column rather than the constraint so a later rename cannot quietly break them.
+ * This is the fault that broke the leadership desk on its first request in 3b.
+ */
+const SUCCESSION_COLUMNS =
+  "id, predecessor_company_id, successor_company_id, relationship, effective_on, effective_precision, " +
+  "note, document_id, source_page, announcement_id, review_status, review_self_approved, reviewed_at, " +
+  "predecessor:companies!predecessor_company_id(name, slug, listing_status), " +
+  "successor:companies!successor_company_id(name, slug), " +
+  "documents!document_id(title), announcements!announcement_id(headline)";
+
+interface SuccessionRow {
+  id: string;
+  predecessor_company_id: string;
+  successor_company_id: string;
+  relationship: string;
+  effective_on: string;
+  effective_precision: "day" | "month" | "year";
+  note: string | null;
+  document_id: string | null;
+  source_page: number | null;
+  announcement_id: string | null;
+  review_status: "pending" | "approved" | "rejected";
+  review_self_approved: boolean;
+  reviewed_at: string | null;
+  predecessor: { name: string; slug: string; listing_status: string } | null;
+  successor: { name: string; slug: string } | null;
+  documents: { title: string } | null;
+  announcements: { headline: string } | null;
+}
+
+export async function listSuccessionsForDesk(): Promise<SuccessionForDesk[]> {
+  await requireStaffRole(["financial_analyst", "analyst"]);
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_successions")
+    .select(SUCCESSION_COLUMNS)
+    .order("effective_on", { ascending: false });
+  if (error || !data) reportFailure("the succession records", error);
+
+  return (data as unknown as SuccessionRow[]).map((row) => ({
+    id: row.id,
+    predecessorId: row.predecessor_company_id,
+    predecessorName: row.predecessor?.name ?? "Unknown company",
+    predecessorSlug: row.predecessor?.slug ?? "",
+    predecessorListingStatus: row.predecessor?.listing_status ?? "unlisted",
+    successorId: row.successor_company_id,
+    successorName: row.successor?.name ?? "Unknown company",
+    successorSlug: row.successor?.slug ?? "",
+    relationship: row.relationship,
+    effectiveOn: row.effective_on,
+    effectivePrecision: row.effective_precision,
+    note: row.note,
+    documentId: row.document_id,
+    documentTitle: row.documents?.title ?? null,
+    sourcePage: row.source_page,
+    announcementId: row.announcement_id,
+    announcementHeadline: row.announcements?.headline ?? null,
+    reviewStatus: row.review_status,
+    reviewSelfApproved: row.review_self_approved,
+    reviewedAt: row.reviewed_at,
+  }));
 }
 
 export interface CoverageCell {
