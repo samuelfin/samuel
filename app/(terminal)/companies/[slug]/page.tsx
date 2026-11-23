@@ -15,7 +15,9 @@ import {
 } from "@/lib/data/companies";
 import { listEditorialForCompany } from "@/lib/data/editorial";
 import { listLeadershipForCompany } from "@/lib/data/people";
+import { listFinancialsForCompany } from "@/lib/data/financials";
 import { LeadershipPanel } from "@/components/terminal/leadership-panel";
+import { FinancialsPanel } from "@/components/terminal/financials-panel";
 import { ANNOUNCEMENT_CATEGORY_LABELS, type AnnouncementCategory } from "@/lib/announcements/validation";
 import { EDITORIAL_KIND_LABELS } from "@/lib/editorial/validation";
 
@@ -124,11 +126,12 @@ export default async function CompanyPage({ params }: Props) {
   // Each panel stands or falls on its own: a failing query reports itself rather
   // than taking the page down, and an empty result is never dressed up as a
   // failure.
-  const [documents, announcements, research, leadership] = await Promise.all([
+  const [documents, announcements, research, leadership, financials] = await Promise.all([
     panel(getCompanyDocuments(company.id), "Could not load documents."),
     panel(listAnnouncementsForCompany(company.id), "Could not load announcements."),
     panel(listEditorialForCompany(company.id), "Could not load research."),
     panel(listLeadershipForCompany(company.id), "Could not load leadership."),
+    panel(listFinancialsForCompany(company.id), "Could not load figures."),
   ]);
 
   return (
@@ -170,16 +173,12 @@ export default async function CompanyPage({ params }: Props) {
           />
         </Panel>
 
-        <Panel title="Financial history" span={7} meta="Annual and interim, as reported">
-          <div className="provider-empty">
-            <span className="provider-orbit">◌</span>
-            <strong>No data yet</strong>
-            <p>
-              Revenue, profit, assets and the margins, growth and returns computed from them will
-              appear here. Every figure is entered by an analyst from an approved filing and cites
-              the document and page it came from, so any number can be checked against its source.
-            </p>
-          </div>
+        <Panel title="Financial history" span={7} meta="As reported, with the page for every figure">
+          {!financials.ok ? (
+            <Notice tone="caution">{financials.error}</Notice>
+          ) : (
+            <FinancialsPanel statements={financials.data} companyName={company.name} />
+          )}
         </Panel>
 
         <Panel title="Leadership" span={12} meta="Each office cites its source">

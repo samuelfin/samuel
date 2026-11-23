@@ -1,5 +1,6 @@
 import "server-only";
 import { requireStaffRole } from "@/lib/auth/staff";
+import { requireUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import type { Magnitude, Presentation, StandardSign, StatementType, UnitKind } from "@/lib/financials/validation";
 
@@ -472,6 +473,146 @@ export function assignmentFor(
     )
     .sort((a, b) => b.validFrom.localeCompare(a.validFrom));
   return candidates[0] ?? null;
+}
+
+export interface ReaderFigure {
+  lineItem: string;
+  label: string;
+  unitLabel: string;
+  unitKind: UnitKind;
+  valueReported: number;
+  valueStandardised: number;
+  reportedMagnitude: Magnitude;
+  sourcePage: number;
+  asRestated: boolean;
+  aiAssisted: boolean;
+  note: string | null;
+  isHeadline: boolean;
+  sortOrder: number;
+}
+
+export interface ReaderStatement {
+  id: string;
+  statementType: StatementType;
+  periodType: string;
+  periodStart: string;
+  periodEnd: string;
+  audited: boolean;
+  consolidated: boolean;
+  currency: string;
+  publishedAt: string | null;
+  version: number;
+  restatementKind: string | null;
+  correctionReason: string | null;
+  aiAssisted: boolean;
+  sourceTitle: string | null;
+  sourceUri: string | null;
+  figures: ReaderFigure[];
+}
+
+/**
+ * The reader's projection, deliberately narrower than the desk's.
+ *
+ * The review columns, who entered a statement and who checked it are the desk's
+ * business: selecting them would ship all of them into the payload of every
+ * company page view. The source link is the issuer's own copy, never SFI's
+ * stored object, which is licensed material behind a signed URL.
+ *
+ * No WHERE clause restates the visibility rule. Row-level security already says
+ * a reader sees an approved statement of an approved company whose dataset is
+ * licensed for display, and a duplicate of that condition here is a second place
+ * to get it wrong — and the one that silently stops matching.
+ */
+const READER_STATEMENT_COLUMNS =
+  "id, statement_type, period_type, period_start, period_end, audited, consolidated, currency, " +
+  "published_at, version, restatement_kind, correction_reason, ai_assisted, " +
+  "documents(title, source_uri), " +
+  "financial_statement_lines(line_item, value_reported, value_standardised, reported_magnitude, " +
+  "source_page, as_restated, ai_assisted, note)";
+
+interface ReaderStatementRow {
+  id: string;
+  statement_type: StatementType;
+  period_type: string;
+  period_start: string;
+  period_end: string;
+  audited: boolean;
+  consolidated: boolean;
+  currency: string;
+  published_at: string | null;
+  version: number;
+  restatement_kind: string | null;
+  correction_reason: string | null;
+  ai_assisted: boolean;
+  documents: { title: string; source_uri: string | null } | null;
+  financial_statement_lines: Array<{
+    line_item: string;
+    value_reported: number | string | null;
+    value_standardised: number | string;
+    reported_magnitude: Magnitude | null;
+    source_page: number | null;
+    as_restated: boolean;
+    ai_assisted: boolean;
+    note: string | null;
+  }> | null;
+}
+
+export async function listFinancialsForCompany(companyId: string, limit = 40): Promise<ReaderStatement[]> {
+  const user = await requireUser();
+  // Local preview runs without Supabase, where createClient() throws.
+  if (user.mode !== "authenticated") return [];
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("financial_statements")
+    .select(READER_STATEMENT_COLUMNS)
+    .eq("company_id", companyId)
+    .order("period_end", { ascending: false })
+    .limit(limit);
+  if (error || !data) reportFailure("that company's figures", error);
+
+  const definitions = new Map((await listTemplateLines()).map((line) => [line.lineItem, line]));
+
+  return (data as unknown as ReaderStatementRow[]).map((row) => {
+    const figures = (row.financial_statement_lines ?? []).map((line) => {
+      const definition = definitions.get(line.line_item);
+      return {
+        lineItem: line.line_item,
+        label: definition?.label ?? line.line_item,
+        unitLabel: definition?.unitLabel ?? "",
+        unitKind: definition?.unitKind ?? ("currency" as UnitKind),
+        valueReported: toNumber(line.value_reported),
+        valueStandardised: toNumber(line.value_standardised),
+        reportedMagnitude: line.reported_magnitude ?? "units",
+        sourcePage: line.source_page ?? 0,
+        asRestated: line.as_restated,
+        aiAssisted: line.ai_assisted,
+        note: line.note,
+        isHeadline: definition?.isHeadline ?? false,
+        sortOrder: definition?.sortOrder ?? 9999,
+      };
+    });
+    figures.sort((a, b) => a.sortOrder - b.sortOrder || a.lineItem.localeCompare(b.lineItem));
+
+    return {
+      id: row.id,
+      statementType: row.statement_type,
+      periodType: row.period_type,
+      periodStart: row.period_start,
+      periodEnd: row.period_end,
+      audited: row.audited,
+      consolidated: row.consolidated,
+      currency: row.currency,
+      publishedAt: row.published_at,
+      version: row.version,
+      restatementKind: row.restatement_kind,
+      correctionReason: row.correction_reason,
+      aiAssisted: row.ai_assisted,
+      sourceTitle: row.documents?.title ?? null,
+      sourceUri: row.documents?.source_uri ?? null,
+      figures,
+    };
+  });
 }
 
 export interface SuccessionForDesk {

@@ -337,3 +337,11 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #d8b9
 .coverage-grid td[data-status=rejected]{color:#c98f8f}
 .coverage-grid td[data-status=absent]{color:#5f6a6f}
 @media (max-width:700px){.figure-row{grid-template-columns:1fr}}
+.financials-panel{display:grid;gap:16px}
+.financials-statement h3{margin:0 0 8px;font:600 11px var(--mono);letter-spacing:1px;color:#8b979d;text-transform:uppercase}
+.financials-period{border-top:1px solid #20282e;padding-top:10px;margin-bottom:12px}
+.financials-period h4{margin:0 0 7px;font:600 12.5px var(--head);color:#e6edf0;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.financials-period h4 span{font:9.5px var(--mono);color:#78848a;letter-spacing:.4px;text-transform:uppercase}
+.financials-period .muted{margin:0;font:9.5px var(--mono);color:#78848a;line-height:1.6}
+.financials-period .muted a{color:#9fb0b7}
+.financials-period .figure-table td small{display:block;color:#78848a;font-size:9.5px;margin-top:2px}
