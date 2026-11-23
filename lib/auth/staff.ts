@@ -12,7 +12,11 @@ import { getSessionUser, requireUser } from "@/lib/auth/session";
  * what is visible: a person sees the roles they hold and nothing else.
  */
 
-export const STAFF_ROLES = ["editor", "analyst", "fact_checker", "publisher"] as const;
+// financial_analyst is deliberately distinct from analyst: the analyst role runs
+// the company and leadership registers, and entering or checking a balance sheet
+// is a different job. A role missing from this list is filtered out of
+// getStaffRoles, so whoever held it would appear to hold nothing.
+export const STAFF_ROLES = ["editor", "analyst", "fact_checker", "publisher", "financial_analyst"] as const;
 export type StaffRole = (typeof STAFF_ROLES)[number];
 
 /** Roles the current user holds. Empty for local preview and for readers. */

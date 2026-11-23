@@ -1,6 +1,17 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { asUser, createTestDatabase, createUser, expectSqlError, sha256 } from "./db";
+import {
+  type Magnitude,
+  type Presentation,
+  type StandardSign,
+  type UnitKind,
+  STANDARD_SIGNS,
+  STATEMENT_TYPES,
+  UNIT_KINDS,
+  magnitudeApplies,
+  standardisePreview,
+} from "@/lib/financials/validation";
 
 /**
  * Stage 3c is the first place this platform publishes a number rather than a
@@ -498,6 +509,112 @@ describe("recording a statement", () => {
     expect(rows[0].ai_assisted).toBe(true);
     expect((await lineOf(statement, "revenue")).ai_assisted).toBe(false);
     expect((await lineOf(statement, "profit_after_tax")).ai_assisted).toBe(true);
+  });
+});
+
+/**
+ * The desk shows the analyst the figure that is about to be stored, which means
+ * the standardisation rule exists twice — once in record_statement and once in
+ * lib/financials/validation.ts. Two implementations of one rule drift, so this
+ * runs the same cases through both and requires them to agree. A preview that
+ * disagrees with what is stored is worse than no preview.
+ */
+describe("the desk's preview agrees with what the database stores", () => {
+  const cases: Array<{ item: string; raw: number; presentation?: string; magnitude?: string; sign: StandardSign }> = [
+    { item: "revenue", raw: 1000, sign: "positive" },
+    { item: "revenue", raw: 1234.56, sign: "positive" },
+    { item: "cost_of_sales", raw: 400, sign: "negative" },
+    { item: "cost_of_sales", raw: 400, presentation: "bracketed", sign: "negative" },
+    { item: "cost_of_sales", raw: -400, presentation: "negative", sign: "negative" },
+    { item: "profit_after_tax", raw: 200, sign: "signed" },
+    { item: "profit_after_tax", raw: 150, presentation: "bracketed", sign: "signed" },
+    { item: "earnings_per_share", raw: 4.25, sign: "signed" },
+    { item: "earnings_per_share", raw: 1.5, presentation: "bracketed", sign: "signed" },
+    { item: "total_assets", raw: 9000, magnitude: "billions", sign: "positive" },
+    { item: "shareholders_equity", raw: 2000, presentation: "bracketed", sign: "signed" },
+  ];
+
+  it.each(cases)("$item $raw $presentation $magnitude", async ({ item, raw, presentation, magnitude, sign }) => {
+    const period = nextYear();
+    const statementType = ["total_assets", "shareholders_equity"].includes(item) ? "balance_sheet" : "income";
+    const lines: LineInput[] =
+      statementType === "balance_sheet"
+        ? [
+            ...coreBalanceLines().filter((l) => l.line_item !== item),
+            { line_item: item, value_reported: raw, presentation, magnitude, source_page: 60 },
+          ]
+        : [
+            ...coreIncomeLines().filter((l) => l.line_item !== item),
+            { line_item: item, value_reported: raw, presentation, magnitude, source_page: 40 },
+          ];
+
+    const statement = await recordStatement({ ...period, statementType, lines });
+    const stored = await lineOf(statement, item);
+
+    const preview = standardisePreview({
+      value: raw,
+      presentation: (presentation ?? "plain") as Presentation,
+      magnitude: (stored.reported_magnitude ?? "units") as Magnitude,
+      standardSign: sign,
+    });
+    expect(preview).not.toBeNull();
+    expect(Number(stored.value_standardised)).toBe(preview);
+  });
+
+  it("refuses in both places where a figure cannot be negative", async () => {
+    expect(
+      standardisePreview({
+        value: 1000,
+        presentation: "bracketed",
+        magnitude: "thousands",
+        standardSign: "positive",
+      }),
+    ).toBeNull();
+
+    const period = nextYear();
+    const error = await expectSqlError(
+      recordStatement({
+        ...period,
+        lines: [{ line_item: "revenue", value_reported: 1000, presentation: "bracketed", source_page: 40 }],
+      }),
+    );
+    expect(error.code).toBe("23514");
+  });
+
+  it("agrees about which lines the scale applies to", async () => {
+    const { rows } = await db.query<{ line_item: string; unit_kind: string }>(
+      "select line_item, unit_kind from public.statement_line_catalogue order by line_item",
+    );
+    for (const row of rows) {
+      const applies = magnitudeApplies(row.unit_kind as UnitKind);
+      expect(applies, row.line_item).toBe(row.unit_kind === "currency" || row.unit_kind === "currency_per_unit");
+    }
+  });
+
+  /**
+   * The catalogue's vocabulary and the module's must be the same vocabulary. A
+   * seventh unit kind added as a row would otherwise reach a client that cannot
+   * describe it, and the desk would silently treat it as a quantity.
+   */
+  it("shares its vocabulary with the catalogue", async () => {
+    const { rows: kinds } = await db.query<{ unit_kind: string }>(
+      "select distinct unit_kind from public.statement_line_catalogue",
+    );
+    for (const row of kinds) {
+      expect(UNIT_KINDS as readonly string[], row.unit_kind).toContain(row.unit_kind);
+    }
+    const { rows: signs } = await db.query<{ standard_sign: string }>(
+      "select distinct standard_sign from public.statement_line_catalogue",
+    );
+    for (const row of signs) {
+      expect(STANDARD_SIGNS as readonly string[], row.standard_sign).toContain(row.standard_sign);
+    }
+    const { rows: types } = await db.query<{ statement_type: string }>(
+      "select distinct statement_type from public.statement_line_catalogue",
+    );
+    for (const row of types) {
+      expect(STATEMENT_TYPES as readonly string[], row.statement_type).toContain(row.statement_type);
+    }
   });
 });
 
