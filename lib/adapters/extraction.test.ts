@@ -151,4 +151,14 @@ describe("the kill switch", () => {
   it("knows no extractor it was not given", () => {
     expect(getExtractor("some_model_we_never_bought")).toBeNull();
   });
+
+  /**
+   * A bare object index answers `__proto__` with something truthy that is not an
+   * extractor, and the caller then throws instead of saying the id is unknown.
+   */
+  it("is not fooled by a name from the prototype chain", () => {
+    for (const id of ["__proto__", "constructor", "toString", "valueOf", "hasOwnProperty"]) {
+      expect(getExtractor(id), id).toBeNull();
+    }
+  });
 });

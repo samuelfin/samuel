@@ -5,6 +5,7 @@ import {
   financialYearOf,
   footingWarnings,
   formatReported,
+  magnitudeAllowed,
   magnitudeApplies,
   parseFigure,
   parseIsoDate,
@@ -219,6 +220,46 @@ describe("validateLine", () => {
       "thousands",
     );
     expect(line.ok && line.value.standardised).toBe(77_500_000);
+  });
+
+  /**
+   * A percentage carries no scale: an NPL ratio of 5 is five per cent whatever
+   * heading sits above the column. Refused rather than ignored, because a value
+   * silently dropped is how this module and the database come to disagree.
+   */
+  it("refuses a scale on a percentage or a per-share figure", () => {
+    const ratio = validateLine(
+      { lineItem: "npl_ratio", raw: "5", magnitude: "billions", sourcePage: "90" },
+      NPL,
+      "thousands",
+    );
+    expect(ratio.ok).toBe(false);
+    if (!ratio.ok) expect(ratio.error).toMatch(/carries no scale/);
+
+    const eps = validateLine(
+      { lineItem: "earnings_per_share", raw: "4.25", magnitude: "thousands", sourcePage: "42" },
+      EPS,
+      "thousands",
+    );
+    expect(eps.ok).toBe(false);
+    if (!eps.ok) expect(eps.error).toMatch(/carries no scale/);
+
+    // An explicit "units" is the same as leaving it alone, so it is allowed.
+    const explicit = validateLine(
+      { lineItem: "npl_ratio", raw: "4.3", magnitude: "units", sourcePage: "90" },
+      NPL,
+      "billions",
+    );
+    expect(explicit.ok && explicit.value.standardised).toBe(4.3);
+  });
+
+  it("knows which kinds of figure may be scaled at all", () => {
+    expect(magnitudeAllowed("currency")).toBe(true);
+    expect(magnitudeAllowed("currency_per_unit")).toBe(true);
+    expect(magnitudeAllowed("count")).toBe(true);
+    expect(magnitudeAllowed("quantity")).toBe(true);
+    expect(magnitudeAllowed("percent")).toBe(false);
+    expect(magnitudeAllowed("per_share")).toBe(false);
   });
 
   it("insists on a page", () => {

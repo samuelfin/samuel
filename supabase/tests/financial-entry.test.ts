@@ -492,6 +492,65 @@ describe("recording a statement", () => {
     expect(Number((await lineOf(statement, "total_borrowings")).value_standardised)).toBe(2_500_000);
   });
 
+  /**
+   * The fault the security review found. A percentage carries no scale -- an NPL
+   * ratio of 5 is five per cent whatever heading sits above the column -- and
+   * storing it as billions put 5,000,000,000 in the register while the desk
+   * showed 5. Refused now, rather than ignored, because a silently dropped value
+   * is how a preview and what is stored come to disagree.
+   */
+  it("refuses a scale on a percentage or a per-share figure", async () => {
+    const ratio = nextYear();
+    const percentError = await expectSqlError(
+      recordStatement({
+        ...ratio,
+        companyId: bank,
+        documentId: bankDocument,
+        statementType: "operating",
+        lines: [{ line_item: "npl_ratio", value_reported: 5, magnitude: "billions", source_page: 90 }],
+      }),
+    );
+    expect(percentError.code).toBe("23514");
+    expect(percentError.message).toMatch(/carries no scale/);
+
+    const perShare = nextYear();
+    const shareError = await expectSqlError(
+      recordStatement({
+        ...perShare,
+        lines: [
+          ...coreIncomeLines(),
+          { line_item: "earnings_per_share", value_reported: 4.25, magnitude: "thousands", source_page: 42 },
+        ],
+      }),
+    );
+    expect(shareError.code).toBe("23514");
+    expect(shareError.message).toMatch(/carries no scale/);
+  });
+
+  it("still lets a count or a quantity carry the scale the filing printed", async () => {
+    const period = nextYear();
+    const statement = await recordStatement({
+      ...period,
+      statementType: "operating",
+      lines: [{ line_item: "shares_outstanding", value_reported: 31.4, magnitude: "billions", source_page: 44 }],
+    });
+    const shares = await lineOf(statement, "shares_outstanding");
+    expect(Number(shares.value_standardised)).toBe(31_400_000_000);
+    expect(shares.reported_magnitude).toBe("billions");
+  });
+
+  it("accepts an explicit units scale on a percentage, which changes nothing", async () => {
+    const period = nextYear();
+    const statement = await recordStatement({
+      ...period,
+      companyId: bank,
+      documentId: bankDocument,
+      statementType: "operating",
+      lines: [{ line_item: "npl_ratio", value_reported: 4.3, magnitude: "units", source_page: 90 }],
+    });
+    expect(Number((await lineOf(statement, "npl_ratio")).value_standardised)).toBe(4.3);
+  });
+
   it("flags the statement as AI-assisted when any single figure was", async () => {
     const period = nextYear();
     const statement = await recordStatement({

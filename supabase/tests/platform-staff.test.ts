@@ -129,6 +129,40 @@ describe("roles are granted only through the trusted function", () => {
     expect(Number(rows[0].n)).toBe(1);
   });
 
+  /**
+   * Stage 3c added financial_analyst to the table's CHECK but not to this
+   * whitelist, so the only supported way to grant it refused. It failed closed,
+   * which is why nothing was exposed — and why nothing caught it either: every
+   * test inserts into platform_staff directly. The two lists have to agree.
+   */
+  it("grants the role the figures desk is staffed from", async () => {
+    const admin = await createUser(db, { admin: true });
+    const target = await createUser(db);
+
+    await db.query("select public.set_platform_staff_role($1, $2, 'financial_analyst', true)", [target, admin]);
+    expect(await roleOf(target)).toEqual(["financial_analyst"]);
+
+    await db.query("select public.set_platform_staff_role($1, $2, 'financial_analyst', false)", [target, admin]);
+    expect(await roleOf(target)).toEqual([]);
+  });
+
+  it("can grant every role the table will store", async () => {
+    const admin = await createUser(db, { admin: true });
+    const { rows } = await db.query<{ constraint_definition: string }>(
+      `select pg_get_constraintdef(oid) as constraint_definition
+         from pg_constraint where conname = 'platform_staff_role_check'`,
+    );
+    // Read from the constraint rather than from a copy of its list, so a role
+    // added to one and not the other fails here.
+    const roles = [...rows[0].constraint_definition.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+    expect(roles.length).toBeGreaterThanOrEqual(5);
+    for (const role of roles) {
+      const target = await createUser(db);
+      await db.query("select public.set_platform_staff_role($1, $2, $3, true)", [target, admin, role]);
+      expect(await roleOf(target), role).toEqual([role]);
+    }
+  });
+
   it("rejects an unknown role even from an administrator", async () => {
     const admin = await createUser(db, { admin: true });
     const target = await createUser(db);

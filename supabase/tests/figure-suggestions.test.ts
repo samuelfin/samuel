@@ -235,6 +235,17 @@ describe("queueing a run", () => {
     expect(noFigure.message).toMatch(/needs a figure/);
   });
 
+  it("refuses a proposal that scales a figure carrying no scale", async () => {
+    const error = await expectSqlError(
+      queueBatch({
+        statementType: "operating",
+        suggestions: [{ line_item: "npl_ratio", value_reported: 5, magnitude: "billions", source_page: 90 }],
+      }),
+    );
+    expect(error.code).toBe("23514");
+    expect(error.message).toMatch(/carries no scale/);
+  });
+
   it("refuses the same figure twice in one run", async () => {
     const error = await expectSqlError(
       queueBatch({

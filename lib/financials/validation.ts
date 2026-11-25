@@ -83,6 +83,20 @@ export function magnitudeApplies(unitKind: UnitKind): boolean {
   return unitKind === "currency" || unitKind === "currency_per_unit";
 }
 
+/**
+ * Whether a figure may carry a scale at all.
+ *
+ * A filing can state subscribers in millions or tonnes in thousands, so counts
+ * and quantities may be scaled. A percentage and a per-share figure cannot: an
+ * NPL ratio of 5 is five per cent whatever heading sits above the column, and a
+ * scale on it would store 5,000,000,000 while every reader of the page sees 5.
+ * Refused rather than ignored — a value quietly dropped is how a desk preview
+ * and what is stored come to disagree.
+ */
+export function magnitudeAllowed(unitKind: UnitKind): boolean {
+  return unitKind !== "percent" && unitKind !== "per_share";
+}
+
 export const PERIOD_TYPES = ["FY", "H1", "Q1", "Q2", "Q3", "Q4", "9M"] as const;
 export type PeriodType = (typeof PERIOD_TYPES)[number];
 
@@ -314,6 +328,14 @@ export function validateLine(
   const chosen = (line.magnitude ?? "").trim();
   if (chosen && !(MAGNITUDES as readonly string[]).includes(chosen)) {
     return { ok: false, error: `${definition.label}: that is not a scale we store.` };
+  }
+  if (chosen && chosen !== "units" && !magnitudeAllowed(definition.unitKind)) {
+    return {
+      ok: false,
+      error: `${definition.label} is ${
+        definition.unitKind === "percent" ? "a percentage" : "a per-share figure"
+      } and carries no scale. Enter it as the filing prints it.`,
+    };
   }
   const magnitude: Magnitude = chosen ? (chosen as Magnitude) : applies ? statementMagnitude : "units";
 

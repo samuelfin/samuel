@@ -32,7 +32,6 @@ export const metadata: Metadata = { title: "Figures" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** FY2021–FY2025, the pilot universe's five years. */
 const COVERAGE_YEARS = [2021, 2022, 2023, 2024, 2025] as const;
 
 function isStatementType(value: string | undefined): value is StatementType {
@@ -47,9 +46,6 @@ export default async function FiguresDeskPage({
   const staff = await requireStaffRole(["financial_analyst"]);
   const params = await searchParams;
 
-  // `statement` carries either a statement id to revise or a statement type to
-  // enter. One parameter for both keeps the links short, and the two shapes
-  // cannot be confused: one is a uuid.
   const revisingId = params.statement && UUID.test(params.statement) ? params.statement : undefined;
   const companyId = params.company && UUID.test(params.company) ? params.company : "";
   const periodEnd = params.period ?? "";
@@ -92,9 +88,7 @@ export default async function FiguresDeskPage({
     ? assignmentFor(assignments, formCompanyId, formPeriodEnd || "9999-12-31")
     : null;
 
-  // The figures the form may carry: the core set plus the company's sector set
-  // for that period. Read here, and read again in the action — a form's hidden
-  // fields are a suggestion, not an authority.
+
   const definitions = templateLines.filter(
     (line) =>
       line.statementType === statementType &&

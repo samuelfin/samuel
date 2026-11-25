@@ -220,5 +220,8 @@ export function availableExtractors(): FigureExtractor[] {
 
 export function getExtractor(id: string): FigureExtractor | null {
   if (!extractionEnabled()) return null;
-  return EXTRACTORS[id] ?? null;
+  // `hasOwn`, not a bare index: `getExtractor("__proto__")` on a plain object
+  // returns something truthy that is not an extractor, and the caller then
+  // throws instead of saying the extractor is unknown.
+  return Object.hasOwn(EXTRACTORS, id) ? EXTRACTORS[id] : null;
 }

@@ -518,10 +518,14 @@ export interface ReaderStatement {
  * company page view. The source link is the issuer's own copy, never SFI's
  * stored object, which is licensed material behind a signed URL.
  *
- * No WHERE clause restates the visibility rule. Row-level security already says
- * a reader sees an approved statement of an approved company whose dataset is
- * licensed for display, and a duplicate of that condition here is a second place
- * to get it wrong — and the one that silently stops matching.
+ * The approved filter below is not a restatement of the security rule, which is
+ * the distinction an earlier version of this comment got wrong. Row-level
+ * security decides who may see a row, and it is deliberately wider for the
+ * figures desk than for a reader; this panel's meaning is narrower than that —
+ * "the figures we publish" — so without the filter a financial_analyst or an
+ * admin would see pending and rejected statements on the company page rendered
+ * exactly like approved ones. Authorisation stays with the policy. The filter
+ * says what the panel is for.
  */
 const READER_STATEMENT_COLUMNS =
   "id, statement_type, period_type, period_start, period_end, audited, consolidated, currency, " +
@@ -567,6 +571,7 @@ export async function listFinancialsForCompany(companyId: string, limit = 40): P
     .from("financial_statements")
     .select(READER_STATEMENT_COLUMNS)
     .eq("company_id", companyId)
+    .eq("review_status", "approved")
     .order("period_end", { ascending: false })
     .limit(limit);
   if (error || !data) reportFailure("that company's figures", error);

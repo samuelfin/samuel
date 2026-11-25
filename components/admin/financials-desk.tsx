@@ -32,6 +32,7 @@ import {
   footingWarnings,
   formatReported,
   formatSourceDate,
+  magnitudeAllowed,
   magnitudeApplies,
   parseFigure,
   parsePeriod,
@@ -69,12 +70,27 @@ function Message({ state }: { state: FinancialsActionState }) {
 }
 
 /** A figure as it will be stored, shown beside what was typed. */
-function Preview({ raw, magnitude, definition }: { raw: string; magnitude: Magnitude; definition: TemplateLine }) {
+function Preview({
+  raw,
+  magnitude,
+  lineMagnitude,
+  definition,
+}: {
+  raw: string;
+  magnitude: Magnitude;
+  /** The analyst's own override for this line, where they have set one. */
+  lineMagnitude: Magnitude | "";
+  definition: TemplateLine;
+}) {
   const figure = parseFigure(raw);
   if (!figure) {
     return raw.trim() ? <small className="form-warning">Not a figure yet</small> : null;
   }
-  const effective = magnitudeApplies(definition.unitKind) ? magnitude : "units";
+  // The override is read, not recomputed. An earlier version derived the scale
+  // from the unit kind alone and so ignored what the analyst had chosen, which
+  // left the preview showing one figure while another was stored — and the
+  // preview is the one place that mistake would be caught.
+  const effective: Magnitude = lineMagnitude || (magnitudeApplies(definition.unitKind) ? magnitude : "units");
   const standardised = standardisePreview({
     value: figure.value,
     presentation: figure.presentation,
@@ -116,6 +132,9 @@ export function StatementForm({
 }) {
   const [state, action, pending] = useActionState(saveStatementAction, EMPTY);
   const [magnitude, setMagnitude] = useState<Magnitude>(supersedes?.magnitude ?? "thousands");
+  // The per-line scale an analyst has chosen, held here rather than left to the
+  // DOM so the preview can read the same value the form will post.
+  const [lineScales, setLineScales] = useState<Record<string, Magnitude | "">>({});
   const [figures, setFigures] = useState<Record<string, string>>(() => {
     const seeded: Record<string, string> = {};
     for (const line of supersedes?.lines ?? []) {
@@ -296,7 +315,12 @@ export function StatementForm({
                 }
                 placeholder="As printed — 1,234 or (1,234)"
               />
-              <Preview raw={figures[definition.lineItem] ?? ""} magnitude={magnitude} definition={definition} />
+              <Preview
+                raw={figures[definition.lineItem] ?? ""}
+                magnitude={magnitude}
+                lineMagnitude={lineScales[definition.lineItem] ?? ""}
+                definition={definition}
+              />
               {definition.definitionNote ? <small>{definition.definitionNote}</small> : null}
             </label>
 
@@ -310,10 +334,24 @@ export function StatementForm({
               />
             </label>
 
-            {magnitudeApplies(definition.unitKind) ? null : (
+            {/* Money inherits the statement's scale, and a percentage or a
+                per-share figure carries none at all — an NPL ratio of 5 is five
+                per cent whatever heading sits above the column. So this appears
+                only for counts and quantities, where a filing really does say
+                "77.5 million subscribers". */}
+            {magnitudeApplies(definition.unitKind) || !magnitudeAllowed(definition.unitKind) ? null : (
               <label>
                 Scale
-                <select name={`magnitude:${definition.lineItem}`} defaultValue="">
+                <select
+                  name={`magnitude:${definition.lineItem}`}
+                  value={lineScales[definition.lineItem] ?? ""}
+                  onChange={(event) =>
+                    setLineScales((current) => ({
+                      ...current,
+                      [definition.lineItem]: event.target.value as Magnitude | "",
+                    }))
+                  }
+                >
                   <option value="">As printed</option>
                   {MAGNITUDES.map((option) => (
                     <option key={option} value={option}>
