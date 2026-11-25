@@ -463,6 +463,39 @@ describe("closing a batch", () => {
     expect(error.message).toMatch(/different company, statement or period/);
   });
 
+  /**
+   * A full year and a half-year interim can end on the same date, so comparing
+   * company, statement and period end was not enough: a batch read from one
+   * could close against the other, and the provenance would say an extractor
+   * proposed figures it never saw.
+   */
+  it("refuses a statement of a different period type ending on the same date", async () => {
+    const period = nextPeriod();
+    const batch = await queueBatch({ period });
+    const { rows } = await db.query<{ id: string }>(
+      `select public.record_statement(
+         $1, $2, 'income', 'H1', $3, $4, false, true, 'NGN', 'thousands', $5, $6::jsonb, null, null, null, null
+       ) as id`,
+      [
+        financial,
+        company,
+        period.start,
+        period.end,
+        document,
+        JSON.stringify([
+          { line_item: "revenue", value_reported: 1000, source_page: 40 },
+          { line_item: "profit_before_tax", value_reported: 300, source_page: 40 },
+          { line_item: "profit_after_tax", value_reported: 200, source_page: 40 },
+        ]),
+      ],
+    );
+    const error = await expectSqlError(
+      db.query("select public.close_suggestion_batch($1, $2, $3)", [batch, financial, rows[0].id]),
+    );
+    expect(error.code).toBe("23514");
+    expect(error.message).toMatch(/different company, statement or period/);
+  });
+
   it("closes without a statement, for a run that produced nothing worth keeping", async () => {
     const batch = await queueBatch();
     await db.query("select public.close_suggestion_batch($1, $2, null)", [batch, financial]);

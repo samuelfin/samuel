@@ -289,9 +289,17 @@ export async function getCompanyDocuments(companyId: string, limit = 50): Promis
 // Staff-facing
 // ---------------------------------------------------------------------------
 
-/** The registry desk: every company, whatever its review state. */
+/**
+ * The registry desk: every company, whatever its review state.
+ *
+ * The figures desk needs this list too — a statement has to name a company —
+ * so `financial_analyst` is admitted here alongside the role that writes these
+ * records. Without it the figures desk passed its own guard and was then
+ * redirected away by this one: the same fail-closed shape as the staff-role
+ * whitelist 202611250001 fixed, where the role existed and could reach nothing.
+ */
 export async function listCompaniesForDesk(limit = 200): Promise<CompanyForDesk[]> {
-  await requireStaffRole(["analyst"]);
+  await requireStaffRole(["analyst", "financial_analyst"]);
   const supabase = await createClient();
 
   const { data, error } = await supabase.from("companies").select(DESK_COLUMNS).order("name").limit(limit);

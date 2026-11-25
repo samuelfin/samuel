@@ -303,6 +303,58 @@ describe("privilege escalation", () => {
   });
 });
 
+describe("the desk can see what it needs", () => {
+  /**
+   * The mirror of the escalation probes, and the fault the bounty hunt found:
+   * the figures desk could reach nothing. The page passed its own guard and the
+   * company loader's redirected it away, because no companies policy admitted
+   * financial_analyst. Fail-closed, so nothing was exposed — and a stage that
+   * ships unusable is not shipped.
+   */
+  it("shows the figures desk every company, including one nobody has approved", async () => {
+    await asUser(db, financial, async () => {
+      const { rows } = await db.query<{ id: string }>(
+        "select id from public.companies where id in ($1, $2) order by id",
+        [company, pendingCompany],
+      );
+      expect(rows).toHaveLength(2);
+    });
+  });
+
+  it("shows the figures desk the ticker beside the company", async () => {
+    // The symbol lives on the instrument, not on company_identifiers, which is
+    // why this counts as the owner first: an assertion that the desk sees "more
+    // than nothing" would pass against a table that is empty for another reason.
+    const { rows: owned } = await db.query<{ instruments: number; identifiers: number }>(
+      `select (select count(*)::int from public.instruments where company_id = $1) as instruments,
+              (select count(*)::int from public.instrument_identifiers ii
+                 join public.instruments i on i.id = ii.instrument_id
+                where i.company_id = $1) as identifiers`,
+      [pendingCompany],
+    );
+    expect(owned[0].instruments).toBeGreaterThan(0);
+    expect(owned[0].identifiers).toBeGreaterThan(0);
+
+    await asUser(db, financial, async () => {
+      const { rows } = await db.query<{ instruments: number; identifiers: number }>(
+        `select (select count(*)::int from public.instruments where company_id = $1) as instruments,
+                (select count(*)::int from public.instrument_identifiers ii
+                   join public.instruments i on i.id = ii.instrument_id
+                  where i.company_id = $1) as identifiers`,
+        [pendingCompany],
+      );
+      expect(rows[0]).toEqual(owned[0]);
+    });
+  });
+
+  it("still shows an editor nothing it had no business seeing", async () => {
+    await asUser(db, editor, async () => {
+      const { rows } = await db.query("select id from public.companies where id = $1", [pendingCompany]);
+      expect(rows).toHaveLength(0);
+    });
+  });
+});
+
 describe("what a reader can see", () => {
   it("hides a pending statement, a rejected one and the figures of an unapproved company", async () => {
     const rejected = await makeStatement({ periodEnd: "2018-12-31" });

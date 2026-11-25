@@ -7,6 +7,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { assignmentFor, listTemplateAssignments, listTemplateLines } from "@/lib/data/financials";
 import { getExtractor } from "@/lib/adapters/extraction";
 import {
+  MAGNITUDES,
+  PERIOD_TYPES,
+  STATEMENT_TYPES,
   type LineInput,
   parsePeriod,
   validateStatement,
@@ -289,6 +292,31 @@ export async function queueSuggestionsAction(
   if (!UUID.test(companyId)) return { error: "Choose the company these figures belong to." };
   if (!UUID.test(documentId)) return { error: "Choose the filing the figures were read from." };
   if (!text.trim()) return { error: "Paste the figures to read." };
+  // A statement is a page or two of a filing. Beyond this the paste is not a
+  // table, and the figure matcher would be walking a large string for nothing.
+  if (text.length > 100_000) {
+    return { error: "That is more text than a statement. Paste the table, not the filing." };
+  }
+
+  // Checked here rather than left to the table's CHECK. A forged value would be
+  // refused either way, but a constraint violation comes back carrying
+  // constraint and relation names, and explainSuggestion passes a 23514 message
+  // through verbatim because the functions' own messages are written to be read.
+  const periodType = field(form, "periodType") || "FY";
+  const currency = field(form, "currency") || "NGN";
+  const magnitude = field(form, "magnitude") || "thousands";
+  if (!(STATEMENT_TYPES as readonly string[]).includes(statementType)) {
+    return { error: "Choose which statement this is." };
+  }
+  if (!(PERIOD_TYPES as readonly string[]).includes(periodType)) {
+    return { error: "Choose the reporting period." };
+  }
+  if (!/^[A-Za-z]{3}$/.test(currency)) {
+    return { error: "Give the currency the filing reports in, as a three-letter code." };
+  }
+  if (!(MAGNITUDES as readonly string[]).includes(magnitude)) {
+    return { error: "Choose the scale the filing presents its figures in." };
+  }
 
   const extractor = getExtractor(field(form, "provider") || "manual_paste");
   if (!extractor) {
@@ -325,11 +353,11 @@ export async function queueSuggestionsAction(
     p_company_id: companyId,
     p_document_id: documentId,
     p_statement_type: statementType,
-    p_period_type: field(form, "periodType") || "FY",
+    p_period_type: periodType,
     p_period_start: period.periodStart,
     p_period_end: period.periodEnd,
-    p_currency: field(form, "currency") || "NGN",
-    p_magnitude: field(form, "magnitude") || "thousands",
+    p_currency: currency.toUpperCase(),
+    p_magnitude: magnitude,
     p_provider: extractor.id,
     p_suggestions: result.figures.map((figure) => ({
       line_item: figure.lineItem,

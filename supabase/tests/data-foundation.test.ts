@@ -62,6 +62,7 @@ describe("migrations", () => {
       "202611230002_succession_announcement_status.sql",
       "202611230003_figure_suggestions.sql",
       "202611250001_figure_scale_and_role_grant.sql",
+      "202611250002_figures_desk_visibility.sql",
     ]);
   });
 });

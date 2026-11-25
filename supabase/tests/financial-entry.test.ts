@@ -1218,6 +1218,40 @@ describe("nothing is edited in place", () => {
     expect(error.message).toMatch(/pending statement/);
   });
 
+  /**
+   * A figure's label is read from the catalogue, not from the stored row, so an
+   * edited label retroactively relabels every figure already published under it.
+   * The statement it belongs to is frozen outright once a figure exists — moving
+   * a line from the income statement to the balance sheet would orphan every row
+   * entered under it — and a label change records what it used to say.
+   */
+  it("freezes a line's statement once figures exist, and records a relabel", async () => {
+    const period = nextYear();
+    await recordStatement({ ...period });
+
+    const moved = await expectSqlError(
+      db.query(
+        "select public.upsert_statement_line($1, 'revenue', 'Revenue', 'balance_sheet', 'currency', 'currency', 'positive', null)",
+        [financial],
+      ),
+    );
+    expect(moved.code).toBe("42501");
+    expect(moved.message).toMatch(/that cannot move/);
+
+    const { rows: before } = await db.query<{ label: string }>(
+      "select label from public.statement_line_catalogue where line_item = 'revenue'",
+    );
+    await db.query(
+      "select public.upsert_statement_line($1, 'revenue', 'Revenue (gross earnings)', 'income', 'currency', 'currency', 'positive', null)",
+      [financial],
+    );
+    const { rows: audit } = await db.query<{ details: { label: string; previous_label: string } }>(
+      "select details from public.audit_logs where action = 'statement_line.catalogued' order by created_at desc limit 1",
+    );
+    expect(audit[0].details.previous_label).toBe(before[0].label);
+    expect(audit[0].details.label).toBe("Revenue (gross earnings)");
+  });
+
   it("fixes a line's unit and sign once figures have been entered against it", async () => {
     const period = nextYear();
     await recordStatement({ ...period });
