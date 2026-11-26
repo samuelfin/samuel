@@ -72,3 +72,40 @@ describe("no arithmetic in TypeScript", () => {
     expect(definitions).not.toMatch(/\/\s*1000\b/);
   });
 });
+
+describe("a chart and the table beside it", () => {
+  const CHART = source("../../components/terminal/history-charts.tsx");
+  const RATIOS_PAGE = source("../../app/(terminal)/companies/[slug]/ratios/page.tsx");
+  const FINANCIALS_PAGE = source("../../app/(terminal)/companies/[slug]/financials/page.tsx");
+
+  it("draws from the series module and loads nothing of its own", () => {
+    // A chart that fetched its own figures could show a different year, a
+    // different basis or a stale number from the table under it.
+    expect(CHART).toContain('from "@/lib/metrics/series"');
+    expect(CHART).not.toContain("@/lib/data/");
+  });
+
+  it("always ships the table with the chart", () => {
+    expect(CHART).toContain("<svg");
+    expect(CHART).toContain("figure-table");
+    expect(CHART).toContain("The same figures as a table");
+  });
+
+  it("feeds the ratio chart the same values the ratio table gets", () => {
+    // Both read ratios.data[0]; nothing re-queries for the chart.
+    expect(RATIOS_PAGE).toContain("const values = ratios.ok ? ratios.data[0] : []");
+    expect(RATIOS_PAGE).toContain("metricSeries(values, {");
+    expect(RATIOS_PAGE).toContain("values={ratios.data[0]}");
+  });
+
+  it("feeds the figure chart the same statements the figure table gets", () => {
+    expect(FINANCIALS_PAGE).toContain("figureRows(figures.data)");
+    expect(FINANCIALS_PAGE).toContain("statements={figures.data}");
+  });
+
+  it("leaves a missing year as a gap rather than a zero", () => {
+    // The guard is in the series module; this states the drawing's half of it.
+    expect(CHART).toContain("point.value === null) return null");
+    expect(CHART).toContain("valueRuns");
+  });
+});

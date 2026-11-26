@@ -399,3 +399,44 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #d8b9
 .tile-foot{font:9px var(--mono);color:#6d787e;line-height:1.5}
 .dividends-panel{display:grid;gap:14px;padding:12px 14px}
 @media (max-width:700px){.ratio-how dl{grid-template-columns:1fr}}
+
+/* Charts (stage 3d.5). Two series, in steps validated for colour-vision
+   deficiency and for contrast against this surface: #bf8f2e and #4a95d1 pass the
+   lightness band, the chroma floor, adjacent-pair CVD separation (dE 22.2
+   protan, 21.2 tritan), the normal-vision floor (24.1) and 3:1 contrast. Print
+   gets its own selected steps against white rather than an automatic flip. */
+.history-chart{--series-1:#bf8f2e;--series-2:#4a95d1;margin:0;display:grid;gap:8px}
+.history-chart figcaption{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;justify-content:space-between}
+.history-chart figcaption strong{font:600 12.5px var(--head);color:#e6edf0}
+.history-chart figcaption span{font:9.5px var(--mono);letter-spacing:.4px;color:#78848a}
+.history-chart.is-empty .empty-state{margin-top:4px}
+.chart-legend{display:flex;flex-wrap:wrap;gap:14px;margin:0;padding:0;list-style:none;font:9.5px var(--mono);letter-spacing:.4px;color:#9aa4a9}
+.chart-legend li{display:flex;align-items:center;gap:6px}
+.chart-swatch{width:9px;height:9px;border-radius:2px;background:var(--series-1)}
+.chart-swatch[data-series="2"]{background:var(--series-2)}
+.chart-svg{width:100%;height:auto;overflow:visible}
+.chart-grid{stroke:#20282e;stroke-width:1}
+.chart-axis{fill:#78848a;font:9px var(--mono)}
+.chart-axis.is-gap{fill:#6d787e}
+.chart-gap-note{fill:#c9bb94;font:8px var(--mono)}
+.chart-value{fill:#cdd6db;font:9.5px var(--mono)}
+.chart-bar{fill:var(--series-1);stroke:var(--panel);stroke-width:2}
+.chart-bar[data-series="2"]{fill:var(--series-2)}
+.chart-line{fill:none;stroke:var(--series-1);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.chart-line[data-series="2"]{stroke:var(--series-2)}
+.chart-dot{fill:var(--series-1);stroke:var(--panel);stroke-width:2}
+.chart-dot[data-series="2"]{fill:var(--series-2)}
+.chart-table summary{font:9.5px var(--mono);letter-spacing:.5px;color:#9ec8e0;cursor:pointer}
+.chart-table .figure-table{margin-top:8px}
+.chart-table .figure-table small{display:block;color:#78848a;font-size:9px}
+@media print{
+  .history-chart{--series-1:#8a6410;--series-2:#1e5f96}
+  .chart-bar,.chart-dot{stroke:#fff}
+  .chart-grid{stroke:#ccc}
+  .chart-axis,.chart-value{fill:#333}
+  .chart-table[open] summary{display:none}
+}
+@media (forced-colors:active){
+  .chart-bar,.chart-dot{fill:CanvasText;stroke:Canvas}
+  .chart-line{stroke:CanvasText}
+}

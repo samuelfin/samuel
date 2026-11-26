@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Notice, Panel, PanelGrid } from "@/components/terminal/ui";
 import { RatiosPanel } from "@/components/terminal/company-panels";
+import { HistoryChart } from "@/components/terminal/history-charts";
+import { metricSeries, seriesYears } from "@/lib/metrics/series";
 import { assignmentFor, listTemplateAssignments } from "@/lib/data/financials";
 import {
   listCompanyMetricInputs,
@@ -42,9 +44,39 @@ export default async function CompanyRatiosPage({ params }: Props) {
     ? (assignmentFor(assignments.data, company.id, "9999-12-31")?.templateId ?? null)
     : null;
 
+  // The charts read the values the panel reads. One array, two renderings: a
+  // chart that disagreed with the table under it would be the stage 3c defect
+  // in a new costume.
+  const values = ratios.ok ? ratios.data[0] : [];
+  const definitions = ratios.ok ? ratios.data[2] : [];
+  const chartYears = seriesYears(values.map((value) => value.financialYear));
+  const lineCharts = ["net_margin", "roe"]
+    .map((code) => {
+      const definition = definitions.find((entry) => entry.code === code);
+      if (!definition) return null;
+      return metricSeries(values, {
+        code,
+        label: definition.label,
+        years: chartYears,
+        decimals: definition.decimals,
+      });
+    })
+    .filter((series): series is NonNullable<typeof series> => series !== null);
+
   return (
     <CompanyFrame company={company} tab="ratios">
       <PanelGrid>
+        {lineCharts.length > 0 ? (
+          <Panel title="Ratio history" span={12} meta="The same figures the table below carries">
+            <HistoryChart
+              title={lineCharts.map((series) => series.label).join(" and ")}
+              caption="Calculated by SFI unless a point says the issuer reported it · gaps left as gaps"
+              series={lineCharts}
+              kind="lines"
+            />
+          </Panel>
+        ) : null}
+
         <Panel
           title="Ratios"
           span={12}
