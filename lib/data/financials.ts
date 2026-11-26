@@ -900,3 +900,33 @@ export function coverageGrid(
   }
   return cells;
 }
+
+export interface DocumentAuditClaim {
+  documentId: string;
+  audited: boolean;
+}
+
+/**
+ * What the approved statements say about whether each document was audited.
+ *
+ * The audit status of a filing is a claim the figures carry, not something the
+ * document's kind implies, so it is read from the statements that cite it. Two
+ * approved statements disagreeing about one document means SFI does not know,
+ * and the page says so rather than picking one.
+ */
+export async function listDocumentAuditClaims(companyId: string): Promise<DocumentAuditClaim[]> {
+  const user = await requireUser();
+  if (user.mode !== "authenticated") return [];
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("financial_statements")
+    .select("document_id, audited")
+    .eq("company_id", companyId)
+    .eq("review_status", "approved");
+  if (error || !data) reportFailure("the audit status of those filings", error);
+
+  return (data as Array<{ document_id: string | null; audited: boolean }>)
+    .filter((row): row is { document_id: string; audited: boolean } => Boolean(row.document_id))
+    .map((row) => ({ documentId: row.document_id, audited: row.audited }));
+}

@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
-import { asUser, createTestDatabase, createUser, sha256 } from "./db";
+import { approveMetricLibrary, asUser, createTestDatabase, createUser, sha256 } from "./db";
 
 /**
  * The calculation, and the things it refuses to do.
@@ -43,6 +43,10 @@ beforeAll(async () => {
   admin = await createUser(db, { admin: true });
   analyst = await createUser(db, { staff: ["analyst"] });
   reader = await createUser(db);
+
+  // The library arrives as proposals. A ratio is computed only once a person
+  // has approved its formula, so the fixture does what the desk does.
+  await approveMetricLibrary(db, admin);
 
   generic = await makeCompany("Ratio Industries Plc", "ratio-industries", "RATI");
   bank = await makeCompany("Ratio Bank Plc", "ratio-bank", "RATB");

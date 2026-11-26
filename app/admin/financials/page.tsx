@@ -74,7 +74,7 @@ export default async function FiguresDeskPage({
       listCitableAnnouncements(),
       listSuccessionsForDesk(),
       listSuggestionBatchesForDesk(),
-      listMetricDefinitions(),
+      listMetricDefinitions({ scope: "all" }),
     ]);
 
   const revising = revisingId ? await getStatementForDesk(revisingId) : null;
@@ -293,9 +293,9 @@ export default async function FiguresDeskPage({
                   <span>METHODOLOGY</span>
                   <h2>How the calculated figures are calculated</h2>
                 </div>
-                <span className="admin-count">{metricDefinitions.length} DEFINITIONS</span>
+                <span className="admin-count">{metricDefinitions.filter((d) => d.status === "awaiting_approval").length} AWAITING</span>
               </div>
-              <MetricLibrary definitions={metricDefinitions} />
+              <MetricLibrary definitions={metricDefinitions} canDecide={staff.isPlatformAdmin} />
             </section>
 
             <section className="admin-panel">

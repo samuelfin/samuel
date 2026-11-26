@@ -1,112 +1,160 @@
--- Samuel Terminal — two corrections to the metric library, as new versions.
+-- Samuel Terminal — corrections to the metric library, recorded as proposals.
 --
--- Both were found by building the stage 3d fixtures, which is what fixtures are
--- for. Neither is fixed by editing anything: a migration that has been applied
--- and a definition that has been recorded are both history, so the catalogue
--- gains a line, three definitions gain a version 2, and the view that computes
--- the answers is replaced wholesale.
+-- Three things happen here, and none of them publishes anything. The catalogue
+-- gains four reported lines, three definitions gain a version 2 awaiting human
+-- approval, and the view that computes the answers is replaced.
 --
 -- A five-year rate measured over two years
 -- ----------------------------------------
 -- The compound-rate shape refused only a window it could not measure at all
--- (span < 1). A company with FY2022 and FY2023 therefore published a one-year
--- change under the name "five-year CAGR" — not an arithmetic error, a false
--- statement about the company. A five-year rate spans exactly four years of
--- compounding, so both ends of the window are now required and anything else
--- reads insufficient_history. The years between the endpoints are not used and
--- a gap between them changes nothing, which is why only the ends are checked.
+-- (span < 1). A company with FY2022 and FY2023 would therefore have published a
+-- one-year change under the name "five-year CAGR" — not an arithmetic error, a
+-- false statement about the company. A five-year rate spans exactly four years
+-- of compounding, so both ends of the window are now required and anything else
+-- reads insufficient_history. The years between the endpoints are not used, so a
+-- gap between them changes nothing, which is why only the ends are checked.
 --
--- A return on equity whose two halves belonged to different owners
--- ---------------------------------------------------------------
+-- A return on equity whose halves belonged to different owners
+-- -----------------------------------------------------------
 -- Return on equity divided the group's profit after tax, which includes the
 -- non-controlling interest, by equity attributable to the owners of the parent,
 -- which does not. For Zenith Bank's FY2023 the two differ by ₦340 million —
 -- small, and still a ratio measuring one set of owners' profit against another
 -- set's capital. Filings print the parent's share on the face of the income
--- statement, so it becomes a catalogue line like any other and version 2 of the
--- definition divides by it.
+-- statement, so it becomes a catalogue line and version 2 divides by it.
 --
--- There is deliberately no fallback. Where the line has not been entered, the
--- ratio reads input_missing and names it. Substituting the group's figure would
+-- There is deliberately no fallback. Where the line has not been entered the
+-- ratio reads input_missing and names it; substituting the group's figure would
 -- be the same error committed silently, and a reader could not tell which
--- numerator they were looking at. Return on assets is untouched: the group's
+-- numerator they were looking at. Return on assets is untouched — the group's
 -- profit over the group's assets belongs to one set of owners throughout.
+--
+-- Why version 1 cannot be approved by mistake
+-- -------------------------------------------
+-- Version 1 of these three is also a proposal, and it is the wrong formula. It
+-- is not rejected here, because a rejection names the person who took the
+-- decision and a migration is not a person. It cannot be approved either: a
+-- version may be approved only while it supersedes the latest one, and once
+-- version 2 exists, version 1 no longer does. The rule that stops two competing
+-- proposals being approved out of order is the rule that keeps this one buried.
+--
+-- Labels on a disclosed figure, and on no figure at all
+-- ----------------------------------------------------
+-- A disclosed row took its audited, restated and AI-assisted labels from the
+-- inputs of the calculation that was *not* used, so an unaudited disclosure
+-- could be labelled from audited figures nobody divided. They now come from the
+-- disclosed figure itself. And an unavailable row read as audited, because
+-- bool_and over no rows is true: a figure that does not exist was being
+-- described as audited. Those labels are now null unless a figure carries them.
 
 -- ---------------------------------------------------------------------------
--- 1. The line the parent's share of profit is entered on
+-- 1. Four reported lines
 -- ---------------------------------------------------------------------------
 
--- Signed, because a parent can take a loss, and in the core template because
--- every consolidated filing presents it — but not required, because a company
--- with no subsidiaries does not, and demanding it would make such a filing
--- impossible to enter whole.
+-- The parent's share of profit is signed, because a parent can take a loss, and
+-- sits in the core template because every consolidated filing presents it — but
+-- is not required, because a company with no subsidiaries does not present it
+-- and demanding it would make such a filing impossible to enter whole.
+--
+-- Current assets and current liabilities arrive for the liquidity ratios; a
+-- current ratio built on them is recorded below as a proposal, not seeded live.
+--
+-- Depreciation arrives as a reported cost. There is deliberately no amortisation
+-- line and no derived EBITDA: EBITDA is already a catalogue line entered from
+-- the filing where the issuer states it, and a derived one would need both
+-- charges plus a view on what the issuer excluded. Recorded as deferred in the
+-- architecture doc rather than half-built here.
 insert into public.statement_line_catalogue
   (line_item, label, statement_type, unit_kind, unit_label, standard_sign, definition_note) values
   ('profit_attributable_to_parent', 'Profit attributable to the parent', 'income', 'currency', 'currency', 'signed',
-   'Profit for the year attributable to the equity holders of the parent, as the income statement presents it — the group''s profit after tax less the non-controlling interest. Entered from the page; never derived by subtraction.')
+   'Profit for the year attributable to the equity holders of the parent, as the income statement presents it — the group''s profit after tax less the non-controlling interest. Entered from the page; never derived by subtraction.'),
+  ('current_assets', 'Current assets', 'balance_sheet', 'currency', 'currency', 'positive',
+   'Total current assets as the balance sheet presents them.'),
+  ('current_liabilities', 'Current liabilities', 'balance_sheet', 'currency', 'currency', 'positive',
+   'Total current liabilities as the balance sheet presents them.'),
+  ('depreciation', 'Depreciation', 'income', 'currency', 'currency', 'negative',
+   'Depreciation of property and equipment as presented. Amortisation of intangibles is a separate charge and is not included here; where a filing presents the two together, enter the figure it presents and say so in the note.')
 on conflict (line_item) do nothing;
 
 insert into public.statement_template_lines (template_id, line_item, is_headline, is_required, sort_order) values
-  ('core', 'profit_attributable_to_parent', false, false, 95)
+  ('core', 'profit_attributable_to_parent', false, false, 95),
+  ('core', 'depreciation',                  false, false, 55),
+  ('core', 'current_assets',                false, false, 240),
+  ('core', 'current_liabilities',           false, false, 250)
 on conflict (template_id, line_item) do nothing;
 
 -- ---------------------------------------------------------------------------
--- 2. Version 2 of the three definitions
+-- 2. Version 2 of the three definitions, awaiting approval
 -- ---------------------------------------------------------------------------
-
--- Retired first. The unique index allows one live version of a metric, which is
--- what makes "which formula produced this number" answerable at all.
-update public.metric_definitions set is_active = false
- where code in ('roe', 'revenue_cagr_5y', 'pat_cagr_5y') and version = 1;
 
 insert into public.metric_definitions
   (code, version, label, definition, kind, result_unit, decimals, metric_group,
-   template_id, disclosed_line_item, window_years, owner_name, approved_by_name,
-   approved_at, review_self_approved, sort_order, supersedes_id)
+   template_id, disclosed_line_item, window_years, owner_name, record_reason,
+   sort_order, supersedes_id)
 select
   'roe', 2, 'Return on equity',
   'Profit attributable to the equity holders of the parent, as a percentage of average shareholders'' equity, where the average is the opening and closing equity of the year divided by two. The parent''s share is used rather than the group''s profit after tax, because the equity it is divided by excludes the non-controlling interest; where the filing''s parent-share line has not been entered there is no answer, and none is substituted. A company''s first year held has no opening equity, so it reads Not available: no prior period, until the previous year''s balance sheet is entered.',
   'average_ratio', 'percent', 1, 'returns',
-  null, null, null, 'Interim: Technical Lead', 'Interim: Technical Lead',
-  now(), true, 10, d.id
+  null, null, null, 'Interim: Technical Lead',
+  'Version 1 divided the group''s profit after tax, which includes the non-controlling interest, by equity attributable to the parent, which does not.',
+  10, d.id
 from public.metric_definitions d where d.code = 'roe' and d.version = 1
 on conflict (code, version) do nothing;
 
 insert into public.metric_definitions
   (code, version, label, definition, kind, result_unit, decimals, metric_group,
-   template_id, disclosed_line_item, window_years, owner_name, approved_by_name,
-   approved_at, review_self_approved, sort_order, supersedes_id)
+   template_id, disclosed_line_item, window_years, owner_name, record_reason,
+   sort_order, supersedes_id)
 select
   'revenue_cagr_5y', 2, 'Revenue five-year CAGR',
   'The compound annual growth rate of revenue between the latest financial year and the year four years before it — five years of figures, four years of compounding. Both of those years must be held and both must be positive; where either is absent the rate reads Not available rather than being remeasured over a shorter run and published as five years. The years in between are not used, so a gap between the two ends changes nothing.',
   'cagr', 'percent', 1, 'growth',
-  null, null, 5, 'Interim: Technical Lead', 'Interim: Technical Lead',
-  now(), true, 40, d.id
+  null, null, 5, 'Interim: Technical Lead',
+  'Version 1 refused only a window it could not measure at all, so two years of figures would have published as a five-year rate.',
+  40, d.id
 from public.metric_definitions d where d.code = 'revenue_cagr_5y' and d.version = 1
 on conflict (code, version) do nothing;
 
 insert into public.metric_definitions
   (code, version, label, definition, kind, result_unit, decimals, metric_group,
-   template_id, disclosed_line_item, window_years, owner_name, approved_by_name,
-   approved_at, review_self_approved, sort_order, supersedes_id)
+   template_id, disclosed_line_item, window_years, owner_name, record_reason,
+   sort_order, supersedes_id)
 select
   'pat_cagr_5y', 2, 'Profit after tax five-year CAGR',
   'The compound annual growth rate of profit after tax between the latest financial year and the year four years before it — five years of figures, four years of compounding. Both of those years must be held and both must be positive; a loss at either end makes the measure meaningless, and a shorter run is not remeasured and published as five years. The years in between are not used.',
   'cagr', 'percent', 1, 'growth',
-  null, null, 5, 'Interim: Technical Lead', 'Interim: Technical Lead',
-  now(), true, 50, d.id
+  null, null, 5, 'Interim: Technical Lead',
+  'Version 1 refused only a window it could not measure at all, so two years of figures would have published as a five-year rate.',
+  50, d.id
 from public.metric_definitions d where d.code = 'pat_cagr_5y' and d.version = 1
+on conflict (code, version) do nothing;
+
+-- A new metric rather than a correction, and so also a proposal: a current
+-- ratio is a claim about liquidity and nobody has approved this one.
+insert into public.metric_definitions
+  (code, version, label, definition, kind, result_unit, decimals, metric_group,
+   template_id, disclosed_line_item, window_years, owner_name, record_reason,
+   sort_order)
+values
+  ('current_ratio', 1, 'Current ratio',
+   'Current assets divided by current liabilities, as a multiple, both from the balance sheet of the same period. It says how far the assets a company expects to turn into cash within the year cover what it owes within the year, and nothing about the quality of either.',
+   'ratio', 'times', 2, 'leverage',
+   null, null, null, 'Interim: Technical Lead',
+   'Recorded with the current assets and current liabilities lines so the liquidity ratio has a definition to be approved rather than appearing without one.',
+   50)
 on conflict (code, version) do nothing;
 
 insert into public.metric_definition_inputs (definition_id, role, line_item, sign, use_absolute, sort_order)
 select d.id, v.role, v.line_item, 1, false, 10
   from (values
-    ('roe',             'numerator',   'profit_attributable_to_parent'),
-    ('roe',             'denominator', 'shareholders_equity'),
-    ('revenue_cagr_5y', 'base',        'revenue'),
-    ('pat_cagr_5y',     'base',        'profit_after_tax')
-  ) as v(code, role, line_item)
-  join public.metric_definitions d on d.code = v.code and d.version = 2
+    ('roe',             2, 'numerator',   'profit_attributable_to_parent'),
+    ('roe',             2, 'denominator', 'shareholders_equity'),
+    ('revenue_cagr_5y', 2, 'base',        'revenue'),
+    ('pat_cagr_5y',     2, 'base',        'profit_after_tax'),
+    ('current_ratio',   1, 'numerator',   'current_assets'),
+    ('current_ratio',   1, 'denominator', 'current_liabilities')
+  ) as v(code, version, role, line_item)
+  join public.metric_definitions d on d.code = v.code and d.version = v.version
  where not exists (
    select 1 from public.metric_definition_inputs i
     where i.definition_id = d.id and i.role = v.role and i.line_item = v.line_item
@@ -117,9 +165,7 @@ select d.id, v.role, v.line_item, 1, false, 10
 -- ---------------------------------------------------------------------------
 
 -- Same columns, same grants, still SECURITY INVOKER so the licence gate on the
--- underlying figures reaches the ratios built from them. One line of the verdict
--- changes: the window a compound rate is measured over must be the window its
--- definition names.
+-- underlying figures reaches the ratios built from them.
 create or replace view public.company_metric_values
 with (security_invoker = true) as
 with operands as (
@@ -148,9 +194,11 @@ with operands as (
     array_agg(distinct i.line_item) filter (where i.statement_id is null) as missing_inputs,
     bool_or(i.missing_in_other_currency) as any_other_currency,
     bool_or(i.missing_on_other_basis) as any_other_basis,
-    bool_and(coalesce(i.audited, true)) as all_audited,
-    bool_or(coalesce(i.as_restated, false)) as any_restated,
-    bool_or(coalesce(i.ai_assisted, false)) as any_ai_assisted
+    -- Only figures that exist can carry a label. bool_and over no rows is true,
+    -- which is how a ratio with nothing behind it came to read as audited.
+    bool_and(i.audited) filter (where i.statement_id is not null) as inputs_audited,
+    bool_or(i.as_restated) filter (where i.statement_id is not null) as inputs_restated,
+    bool_or(i.ai_assisted) filter (where i.statement_id is not null) as inputs_ai_assisted
   from public.company_metric_inputs i
   group by
     i.company_id, i.period_end, i.financial_year, i.consolidated, i.currency,
@@ -163,6 +211,12 @@ with operands as (
     f.source_page as disclosed_page,
     f.statement_id as disclosed_statement_id,
     f.document_id as disclosed_document_id,
+    -- A disclosed figure's own labels. The calculation it stands aside for was
+    -- not performed, so that calculation's inputs say nothing about what is on
+    -- the page.
+    f.audited as disclosed_audited,
+    f.as_restated as disclosed_restated,
+    f.ai_assisted as disclosed_ai_assisted,
     o.financial_year - (extract(year from o.window_start_period_end))::int as window_span,
     case
       when o.kind = 'average_ratio' and o.denominator is not null and o.denominator_prior is not null
@@ -189,10 +243,10 @@ with operands as (
        )
         then 'no_prior_period'
       -- A five-year rate is measured between this year and the year four years
-      -- before it. Measuring it over whatever shorter run happens to be held
-      -- and publishing that as five years is the defect this replaces: the span
-      -- must be the span the definition names, and a window with no earlier
-      -- endpoint at all has no span.
+      -- before it. Measuring it over whatever shorter run happens to be held and
+      -- publishing that as five years is the defect this replaces: the span must
+      -- be the span the definition names, and a window with no earlier endpoint
+      -- has no span at all.
       when s.kind = 'cagr'
        and (
          s.window_start_period_end is null
@@ -257,9 +311,21 @@ select
   j.window_start_period_end,
   case when j.kind = 'cagr' then j.window_span end as window_span,
   coalesce(j.missing_inputs, array[]::text[]) as missing_inputs,
-  j.all_audited,
-  j.any_restated,
-  j.any_ai_assisted
+  -- A label belongs to the figure it describes: the disclosed one where that is
+  -- what is shown, the inputs where a calculation was performed, and nothing at
+  -- all where there is no figure to describe.
+  case
+    when j.verdict = 'disclosed' then j.disclosed_audited
+    when j.verdict = 'ok' then j.inputs_audited
+  end as all_audited,
+  case
+    when j.verdict = 'disclosed' then j.disclosed_restated
+    when j.verdict = 'ok' then j.inputs_restated
+  end as any_restated,
+  case
+    when j.verdict = 'disclosed' then j.disclosed_ai_assisted
+    when j.verdict = 'ok' then j.inputs_ai_assisted
+  end as any_ai_assisted
 from judged j;
 
 -- CREATE OR REPLACE keeps the grants; re-stating them is cheaper than someone

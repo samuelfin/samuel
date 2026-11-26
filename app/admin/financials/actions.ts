@@ -565,3 +565,109 @@ export async function assignTemplateAction(
       "Assigned. Periods already entered keep reading under the template that was in force when they were entered.",
   };
 }
+
+/**
+ * Deciding on a formula.
+ *
+ * Methodology is a platform-administration act: the figures desk enters and
+ * checks figures, and deciding what a ratio means is a different job. Every
+ * action re-checks that, names a reason, and leaves the real enforcement to the
+ * database — these are the readable messages, not the guard.
+ */
+
+function explainMethodology(error: { code?: string; message?: string; details?: string }): string {
+  const detail = `${error.message ?? ""} ${error.details ?? ""}`;
+  if (/other than the person who recorded/i.test(detail)) {
+    return "Someone other than the person who recorded this formula has to approve it. Two-person review is switched on.";
+  }
+  if (/newer version of/i.test(detail)) {
+    return "A newer version of this metric has been recorded since. Record yours again against the current version.";
+  }
+  if (/already been decided/i.test(detail)) {
+    return "Somebody has already decided on this version. Record a new one rather than revisiting it.";
+  }
+  if (/approval cannot be withdrawn/i.test(detail)) {
+    return "An approval cannot be withdrawn. Retire the version and record a new one.";
+  }
+  if (error.code === "42501") {
+    return "Only a platform administrator may decide on a metric definition.";
+  }
+  return error.message ?? "That could not be recorded.";
+}
+
+export async function decideMetricDefinitionAction(
+  _prev: FinancialsActionState,
+  form: FormData,
+): Promise<FinancialsActionState> {
+  const staff = await requireStaffRole(["financial_analyst"]);
+  if (!staff.isPlatformAdmin) {
+    return { error: "Only a platform administrator may decide on a metric definition." };
+  }
+
+  const definitionId = field(form, "definitionId");
+  const decision = field(form, "decision");
+  const reason = field(form, "reason");
+
+  if (!UUID.test(definitionId)) return { error: "Choose a formula to decide on." };
+  if (decision !== "approved" && decision !== "rejected") return { error: "Approve or reject it." };
+  if (!reason) {
+    return {
+      error:
+        decision === "approved"
+          ? "Say what you checked. The reason is published with the formula."
+          : "Say why the formula is being rejected. The reason is published with it.",
+    };
+  }
+
+  const admin = createAdminClient();
+  if (!admin) return { error: "Server credentials are not configured." };
+
+  const { error } = await admin.rpc("decide_metric_definition", {
+    target: definitionId,
+    actor_user: staff.userId,
+    p_decision: decision,
+    p_reason: reason,
+  });
+  if (error) return { error: explainMethodology(error) };
+
+  revalidateFinancials(null);
+  return {
+    notice:
+      decision === "approved"
+        ? "Approved and published. Ratios under this formula now appear on company pages, with the version recorded beside each figure."
+        : "Rejected, with the reason recorded. Nothing was put back into service; a published version this replaced stays retired until somebody reinstates it deliberately.",
+  };
+}
+
+export async function retireMetricDefinitionAction(
+  _prev: FinancialsActionState,
+  form: FormData,
+): Promise<FinancialsActionState> {
+  const staff = await requireStaffRole(["financial_analyst"]);
+  if (!staff.isPlatformAdmin) {
+    return { error: "Only a platform administrator may retire a metric definition." };
+  }
+
+  const definitionId = field(form, "definitionId");
+  const reason = field(form, "reason");
+  const reinstate = flag(form, "reinstate");
+
+  if (!UUID.test(definitionId)) return { error: "Choose a formula." };
+  if (!reason) return { error: "Say why. The reason is recorded in the audit log." };
+
+  const admin = createAdminClient();
+  if (!admin) return { error: "Server credentials are not configured." };
+
+  const { error } = await admin.rpc(
+    reinstate ? "reinstate_metric_definition" : "retire_metric_definition",
+    { target: definitionId, actor_user: staff.userId, p_reason: reason },
+  );
+  if (error) return { error: explainMethodology(error) };
+
+  revalidateFinancials(null);
+  return {
+    notice: reinstate
+      ? "Back in service. Ratios under this formula appear again."
+      : "Retired. The metric now reads as awaiting approval, which is the truth: there is a formula on file and nobody is standing behind it.",
+  };
+}

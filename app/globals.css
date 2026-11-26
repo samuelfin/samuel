@@ -356,3 +356,46 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #d8b9
 .metric-table small{display:block;margin-top:3px;font:9.5px var(--mono);color:#78848a}
 .metric-table code{font:10.5px var(--mono);color:#c9bb94;overflow-wrap:anywhere}
 .metric-table p{margin:5px 0 0;font-size:10.5px;color:#9aa4a9;line-height:1.6}
+
+/* The company page tabs, and the ratios they lead to (stage 3d). */
+.company-tabs{display:flex;flex-wrap:wrap;gap:2px;margin:0 0 14px;border-bottom:1px solid #20282e}
+.company-tabs a{padding:8px 13px;font:10px var(--mono);letter-spacing:.5px;color:#8b979d;text-decoration:none;border:1px solid transparent;border-bottom:0;border-radius:4px 4px 0 0}
+.company-tabs a:hover{color:#cfd9de;background:#121920}
+.company-tabs a.is-current{color:#e0c47f;background:#11171c;border-color:#252e34;box-shadow:inset 0 2px #c4a35f}
+.ratios-panel{display:grid;gap:18px;padding:12px 14px}
+.ratio-group h3{margin:0 0 9px;font:600 11px var(--mono);letter-spacing:1px;color:#8b979d;text-transform:uppercase}
+.ratio{padding:10px 0;border-top:1px solid #20282e}
+.ratio-group .ratio:first-of-type{border-top:0}
+.ratio header{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;justify-content:space-between}
+.ratio h4{margin:0;font:600 12.5px var(--head);color:#e6edf0}
+.ratio-labels{font:9.5px var(--mono);letter-spacing:.4px;color:#78848a;text-transform:uppercase}
+.ratio-latest{margin:6px 0 0;font-size:12px}
+.ratio-latest strong{font-size:17px;color:#e9eef1}
+.ratio-latest span{color:#8b979d;font:9.5px var(--mono);margin-left:6px}
+.ratio-unavailable{color:#c9bb94!important;font:11px var(--sans)!important;margin-left:0!important}
+.ratio-series{display:flex;flex-wrap:wrap;gap:14px;margin:8px 0 0;padding:0;list-style:none}
+.ratio-series li{display:flex;flex-direction:column;gap:2px;min-width:66px}
+.ratio-series span{font:9px var(--mono);color:#6d787e}
+.ratio-series strong{font-size:12px;color:#cdd6db}
+.ratio-series em{font:9.5px var(--sans);color:#c9bb94;font-style:normal}
+.ratio-how{margin-top:8px}
+.ratio-how summary{font:9.5px var(--mono);letter-spacing:.5px;color:#9ec8e0;cursor:pointer}
+.ratio-how dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:8px 0}
+.ratio-how dt{font:9px var(--mono);letter-spacing:.5px;color:#78848a;text-transform:uppercase}
+.ratio-how dd{margin:0;font-size:11px;color:#cdd6db;line-height:1.6}
+.ratio-how code{font:10.5px var(--mono);color:#c9bb94;overflow-wrap:anywhere}
+.ratio-interim{margin:0 0 8px;font:10px var(--sans);color:#c9bb94;background:#17150f;border-left:2px solid #5d4f2f;padding:6px 9px}
+.ratio-inputs h5{margin:8px 0 4px;font:9.5px var(--mono);letter-spacing:.5px;color:#8b979d}
+.ratio-inputs ul{margin:0;padding-left:16px}
+.ratio-inputs li{font-size:10.5px;color:#9aa4a9;line-height:1.7}
+.ratio-inputs strong{color:#cdd6db}
+.ratio-inputs em{color:#c9bb94;font-style:normal}
+.ratio.is-waiting h4{color:#b9c4ca}
+.headline-tiles{display:grid;gap:10px;padding:12px 14px}
+.tile-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.tile{display:flex;flex-direction:column;gap:4px;padding:11px;background:#10151b;border:1px solid #222b32;border-radius:5px}
+.tile-label{font:9px var(--mono);letter-spacing:.6px;color:#78848a;text-transform:uppercase}
+.tile-value{font:600 15px var(--head);color:#e9eef1;overflow-wrap:anywhere}
+.tile-foot{font:9px var(--mono);color:#6d787e;line-height:1.5}
+.dividends-panel{display:grid;gap:14px;padding:12px 14px}
+@media (max-width:700px){.ratio-how dl{grid-template-columns:1fr}}

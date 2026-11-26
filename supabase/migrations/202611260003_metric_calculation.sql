@@ -1,7 +1,7 @@
 -- Samuel Terminal — the calculation: ratios from approved figures, in the database.
 --
 -- One number, one place. The company page, the charts, the five-year download
--- and the methodology page all read these views; nothing else divides anything.
+-- and the desk all read these views; nothing else divides anything.
 -- The lesson of 3c was that two pieces of code computing the same number
 -- eventually disagree, and the cheapest way to make that impossible is to leave
 -- only one of them.

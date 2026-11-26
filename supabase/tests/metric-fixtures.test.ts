@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
-import { asUser, createTestDatabase, createUser, sha256 } from "./db";
+import { approveMetricLibrary, asUser, createTestDatabase, createUser, sha256 } from "./db";
 
 /**
  * The arithmetic, against answers worked out by hand.
@@ -50,6 +50,9 @@ beforeAll(async () => {
   admin = await createUser(db, { admin: true });
   analyst = await createUser(db, { staff: ["analyst"] });
   reader = await createUser(db);
+
+  // Approved by a person, as the desk requires, before any ratio exists.
+  await approveMetricLibrary(db, admin);
 
   const { rows: licence } = await db.query<{ id: string }>(
     `insert into public.data_licences (provider_id, product, status, allows_display)
@@ -492,6 +495,7 @@ describe("a real filing: Zenith Bank Plc, FY2021 to FY2023", () => {
         { line_item: "profit_before_tax", value_reported: 284650, source_page: 39 },
         { line_item: "income_tax_expense", value_reported: 60739, presentation: "bracketed", source_page: 39 },
         { line_item: "profit_after_tax", value_reported: 223911, source_page: 39 },
+        { line_item: "profit_attributable_to_parent", value_reported: 224050, source_page: 39 },
         { line_item: "earnings_per_share", value_reported: 7.14, source_page: 39 },
       ],
     });
@@ -527,6 +531,7 @@ describe("a real filing: Zenith Bank Plc, FY2021 to FY2023", () => {
         { line_item: "profit_before_tax", value_reported: 795962, source_page: 39 },
         { line_item: "income_tax_expense", value_reported: 119053, presentation: "bracketed", source_page: 39 },
         { line_item: "profit_after_tax", value_reported: 676909, source_page: 39 },
+        { line_item: "profit_attributable_to_parent", value_reported: 676569, source_page: 39 },
         { line_item: "earnings_per_share", value_reported: 21.55, source_page: 39 },
       ],
     });
@@ -582,6 +587,10 @@ describe("a real filing: Zenith Bank Plc, FY2021 to FY2023", () => {
     expect(await value(zenith, 2023, "pat_growth")).toBeCloseTo(202.311633, 5);
     // (21.55 − 7.14) ÷ 7.14 = 201.820728%
     expect(await value(zenith, 2023, "eps_growth")).toBeCloseTo(201.820728, 5);
+    // 676,569 ÷ ((2,321,752 + 1,378,127) ÷ 2) = 36.572493%. The parent's share
+    // of profit, not the group's 676,909: the equity it is divided by excludes
+    // the non-controlling interest, so the numerator must too.
+    expect(await value(zenith, 2023, "roe")).toBeCloseTo(36.572493, 5);
     // 676,909 ÷ ((20,368,455 + 12,285,629) ÷ 2) = 4.145938%
     expect(await value(zenith, 2023, "roa")).toBeCloseTo(4.145938, 5);
     // 1,410,885 ÷ 2,321,752 = 0.607681 times
@@ -597,18 +606,26 @@ describe("a real filing: Zenith Bank Plc, FY2021 to FY2023", () => {
   it("computes FY2022 too, because FY2021's balance sheet was entered", async () => {
     // 223,911 ÷ ((12,285,629 + 9,447,843) ÷ 2) = 2.060518%
     expect(await value(zenith, 2022, "roa")).toBeCloseTo(2.060518, 5);
+    // 224,050 ÷ ((1,378,127 + 1,278,518) ÷ 2) = 16.867139%
+    expect(await value(zenith, 2022, "roe")).toBeCloseTo(16.867139, 5);
   });
 
-  it("waits for the profit attributable to the parent before reporting a return on equity", async () => {
-    // The filing prints it on page 39, beside the group's profit after tax, and
-    // until it is entered from that page there is no return on equity. The
-    // group's profit after tax is not a substitute: it includes the
-    // non-controlling interest, and the equity it would be divided by does not.
-    for (const year of [2022, 2023]) {
-      const roe = await answer(zenith, year, "roe");
-      expect(roe?.status).toBe("not_available");
-      expect(roe?.reason).toBe("input_missing");
-    }
+  it("divides the parent's share of profit, never the group's", async () => {
+    // Page 39 prints both: profit after tax of 676,909 for the group and
+    // 676,569 attributable to the equity holders of the parent. The difference
+    // is the non-controlling interest, and return on equity must take the
+    // figure belonging to the same owners as the equity underneath it.
+    const inputs = await asUser(db, reader, async () => {
+      const { rows } = await db.query<{ line_item: string; value_standardised: string }>(
+        `select line_item, value_standardised from public.company_metric_inputs
+          where company_id = $1 and financial_year = 2023 and code = 'roe' and role = 'numerator'`,
+        [zenith],
+      );
+      return rows;
+    });
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0].line_item).toBe("profit_attributable_to_parent");
+    expect(Number(inputs[0].value_standardised)).toBe(676_569e6);
   });
 
   it("has no return on equity for FY2021, and says why", async () => {

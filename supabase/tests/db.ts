@@ -101,6 +101,31 @@ export function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
 
+/**
+ * Approve the seeded metric library as a platform administrator.
+ *
+ * The library arrives as proposals and computes nothing until a person approves
+ * it, so any test about a calculated figure has to do what the desk does. Only
+ * the newest version of each metric is offered: an earlier one no longer
+ * supersedes the latest, and the database refuses it for that reason.
+ */
+export async function approveMetricLibrary(db: PGlite, adminUser: string): Promise<void> {
+  const { rows } = await db.query<{ id: string }>(
+    `select d.id from public.metric_definitions d
+      where d.approved_at is null
+        and d.rejected_at is null
+        and d.version = (select max(o.version) from public.metric_definitions o where o.code = d.code)
+      order by d.code`,
+  );
+  for (const row of rows) {
+    await db.query("select public.decide_metric_definition($1, $2, 'approved', $3)", [
+      row.id,
+      adminUser,
+      "Approved for the test fixture.",
+    ]);
+  }
+}
+
 /** Insert a source record for a dataset and return its id. */
 export async function createSourceRecord(db: PGlite, dataset: string, content: string = randomUUID()): Promise<string> {
   const { rows } = await db.query<{ id: string }>(

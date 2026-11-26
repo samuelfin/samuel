@@ -437,7 +437,7 @@ noted, not open questions.
 | --- | --- |
 | **Entitlements early**, before pages multiply | Phase 5 |
 | **Naira payments** via Paystack or Flutterwave, plus institutional invoicing | Phase 5 |
-| **Public methodology page**: every metric's definition and formula version, owned by the economist | Phase 3d |
+| **Public methodology page**: every metric's definition and formula version, owned by the economist. **Not built in 3d.4** — the register, the formulas, their versions and their approvals are visible in the figures desk; a page for readers is still to come | Phase 3d, later sub-stage |
 | **Coverage score per company** — "5 of 5 years for GTCO, 2 of 5 for X" — honest, and it directs analyst work | Phase 3d |
 | **Design partners**: 3–5 fintechs, brokers or PFAs get early free access for feedback, validating pricing before it is set | Phase 6 |
 | **AI evaluation set**: 50–100 real questions with correct sourced answers, written with the economist; the AI passes it before launch and after every change | Phase 8 |
@@ -453,7 +453,7 @@ around them; do not pick an answer in code.
 
 | Decision | Blocks |
 | --- | --- |
-| **Economist sign-off on the metric library.** The 3d definitions are seeded approved, owned by "Interim: Technical Lead" and flagged self-approved on every row; the methodology page says in words that no economist has reviewed them. Reviewed definitions are recorded as new versions, never edits. **This is a launch gate: the pilot does not go live in Phase 6 with the methodology still interim** | Phase 6 launch |
+| **Economist sign-off on the metric library.** The 3d definitions are seeded as proposals, owned by "Interim: Technical Lead" and flagged self-approved when an administrator approves what a migration recorded; the desk says in words that no economist has reviewed them, and a ratio built on an unapproved formula is not published at all. Reviewed definitions are recorded as new versions, never edits. **This is a launch gate: the pilot does not go live in Phase 6 with the methodology still interim** | Phase 6 launch |
 | First paying customer segment: fintech API or institutional seats | Phase 9 vs Phase 10 priority |
 | How far the AI goes: explain-only, or registered advice | Phase 8 scope |
 | Priority figures and 3 vs 5 years of history. The **company list is settled** — the 18 of Appendix A, pending ticker and listing confirmation against the NGX directory | Phase 3c depth |
