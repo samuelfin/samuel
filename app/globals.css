@@ -345,3 +345,14 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #d8b9
 .financials-period .muted{margin:0;font:9.5px var(--mono);color:#78848a;line-height:1.6}
 .financials-period .muted a{color:#9fb0b7}
 .financials-period .figure-table td small{display:block;color:#78848a;font-size:9.5px;margin-top:2px}
+
+/* The metric register, as the desk reads it (stage 3d). */
+.metric-library{display:grid;gap:14px;padding:12px 14px}
+.metric-group h3{margin:0 0 7px;font:600 11px var(--mono);letter-spacing:1px;color:#8b979d;text-transform:uppercase}
+.metric-table{width:100%;border-collapse:collapse;font-size:11px}
+.metric-table th,.metric-table td{padding:7px 8px;border-bottom:1px solid #20282e;text-align:left;vertical-align:top;color:#cdd6db}
+.metric-table thead th{font:600 9px var(--mono);letter-spacing:.6px;text-transform:uppercase;color:#8b979d}
+.metric-table tbody th{font-weight:400;color:#e6edf0}
+.metric-table small{display:block;margin-top:3px;font:9.5px var(--mono);color:#78848a}
+.metric-table code{font:10.5px var(--mono);color:#c9bb94;overflow-wrap:anywhere}
+.metric-table p{margin:5px 0 0;font-size:10.5px;color:#9aa4a9;line-height:1.6}

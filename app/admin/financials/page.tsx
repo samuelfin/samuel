@@ -10,6 +10,7 @@ import {
   SuggestionQueue,
   TemplateAssignmentForm,
 } from "@/components/admin/financials-desk";
+import { MetricLibrary } from "@/components/admin/metric-library";
 import { requireStaffRole } from "@/lib/auth/staff";
 import { listCompaniesForDesk } from "@/lib/data/companies";
 import {
@@ -25,6 +26,7 @@ import {
   listTemplateLines,
   listTemplates,
 } from "@/lib/data/financials";
+import { listMetricDefinitions } from "@/lib/data/metrics";
 import { STATEMENT_TYPES, type StatementType } from "@/lib/financials/validation";
 import { availableExtractors } from "@/lib/adapters/extraction";
 
@@ -60,6 +62,7 @@ export default async function FiguresDeskPage({
     announcements,
     successions,
     suggestionBatches,
+    metricDefinitions,
   ] =
     await Promise.all([
       listStatementsForDesk(),
@@ -71,6 +74,7 @@ export default async function FiguresDeskPage({
       listCitableAnnouncements(),
       listSuccessionsForDesk(),
       listSuggestionBatchesForDesk(),
+      listMetricDefinitions(),
     ]);
 
   const revising = revisingId ? await getStatementForDesk(revisingId) : null;
@@ -281,6 +285,17 @@ export default async function FiguresDeskPage({
                 <span className="admin-count">FY2021–FY2025</span>
               </div>
               <CoverageGrid cells={cells} years={COVERAGE_YEARS} statementType={statementType} />
+            </section>
+
+            <section className="admin-panel">
+              <div className="admin-panel-heading">
+                <div>
+                  <span>METHODOLOGY</span>
+                  <h2>How the calculated figures are calculated</h2>
+                </div>
+                <span className="admin-count">{metricDefinitions.length} DEFINITIONS</span>
+              </div>
+              <MetricLibrary definitions={metricDefinitions} />
             </section>
 
             <section className="admin-panel">
