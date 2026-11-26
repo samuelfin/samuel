@@ -143,12 +143,52 @@ security headers, CI); **2a** documents; **2b** announcements; **2c** editorial.
   Deactivating that dataset hides every figure that came through it at once,
   which is the point of gating on the licence rather than on a copy of its terms
   taken at entry.
-- **3d Metrics and charts.** System-calculated margins, growth and ROE with
-  recorded formula versions, financial history charts, a **coverage score** per
-  company, the five company-page tabs (Overview, Financials, Ratios, Dividends,
-  Annual Reports), and a five-year comparison download. Valuation ratios — P/E,
-  P/B, market capitalisation, dividend yield, the 52-week range — need share
+- **3d Metrics and charts** *(in progress)*. System-calculated margins, growth
+  and ROE with recorded formula versions, financial history charts, a **coverage
+  score** per company, the five company-page tabs (Overview, Financials, Ratios,
+  Dividends, Annual Reports), and a five-year comparison download in Excel and
+  PDF carrying its sources and its "how calculated" detail. Valuation ratios —
+  P/E, P/B, market capitalisation, dividend yield, the 52-week range — need share
   prices and so wait for the NGX licence; accounting ratios do not and ship here.
+  Naira conversion of a figure reported in another currency is **not** in this
+  stage: a company reporting in dollars has its ratios computed in dollars and
+  labelled.
+
+  Four decisions settle how it is built.
+
+  **Formulas are approved data, and the arithmetic is in the database.** A
+  definition is a versioned row with a plain-language definition, an owner and an
+  approver; the calculation is a set of `security_invoker` views over approved
+  figures. The page, the charts and the download read one projection, so there is
+  nowhere for a second implementation to drift. A language model does not do
+  arithmetic a reader will act on, and neither does a page.
+
+  **A definition declares its shape and its inputs; it does not store an
+  expression.** Six shapes — sum, margin, ratio, average ratio, growth, compound
+  rate — and three input roles, each a signed sum of catalogue lines, optionally
+  taken at its absolute size. That covers the whole library, including the bank
+  ratios. The alternative, an expression string evaluated at query time, would put
+  a code-execution surface inside the database that holds every approved figure,
+  and a string cannot be checked against the catalogue: nothing would stop a
+  formula referring to a line item that does not exist, or to itself. A seventh
+  shape is a migration with a test, which is the right price for one.
+
+  **A disclosed ratio wins.** Where a derived figure would collide with a
+  disclosure 3c already stores — EBITDA margin, net interest margin,
+  cost-to-income, free cash flow — the definition names the disclosed line and
+  stands aside for any period the issuer disclosed it, saying so in the "how
+  calculated" view. One number under one name.
+
+  **An unanswerable calculation gives a reason, never a zero.** `no_prior_period`,
+  `insufficient_history`, `input_missing` with the lines named,
+  `currency_mismatch`, `basis_mismatch`, `denominator_zero`, `not_applicable`.
+  Nothing is estimated, interpolated or carried forward. Average-based ratios have
+  no answer in a company's first year held, and the way to get one is to enter the
+  previous year's balance sheet — which needs no income statement beside it.
+  A calculation never mixes bases, currencies or companies: consolidated wins
+  where it exists, a series that changes basis starts again rather than measuring
+  the group against the parent alone, and a predecessor entity's figures are
+  linked but never joined.
 - **3e Dividends and corporate actions.** History, dates, charts.
 
 Financial history is **entered by an analyst first, not extracted**. Each figure
@@ -278,7 +318,8 @@ What is still to come, and when (`SFI_ARCHITECTURE_V2.md` §5):
 | Statement template catalogue — core set plus six sector sets, editable as rows | Nigerian banks report interest income, loans and deposits, not "revenue"; a template added in the desk must not need a deployment | 3c |
 | Figure entries — original and standardised value, currency, units, period with dates, consolidated vs company-only, audited status, restatement status, document + page, verified date, maker, checker, AI-assisted flag | Manual entry under maker-checker, every figure traceable to a page | 3c |
 | Predecessor entity links — company ↔ predecessor, with the restructuring date and its source | Access Holdings, BUA Foods and Aradel have history under a different entity; linked, never merged | 3c |
-| `financial_metric_definitions` — formula, version, owner | Data dictionary; reproducible metrics | 3d |
+| ~~`financial_metric_definitions`~~ → `metric_definitions`, `metric_definition_inputs` — declared shape, declared inputs, version, owner, approver | Data dictionary; reproducible metrics, and a formula a reader can audit | 3d *(built)* |
+| Calculation views — `approved_fy_figures`, `company_fy_basis`, `company_fy_periods`, `company_metric_inputs`, `company_metric_values` | The one place a ratio is computed; `security_invoker`, so the licence gate on figures reaches the ratios built from them | 3d *(built)* |
 | `corporate_actions` — instrument, type, dates, per-share amount, WHT, ratios | Dividends, bonus, rights, splits | 3e |
 | `public_offers` and its milestones, documents, risks, channels | IPO centre | 4 |
 | Plans, subscriptions, seats, organisations | Free / premium / institutional access | 5 |
@@ -412,6 +453,7 @@ around them; do not pick an answer in code.
 
 | Decision | Blocks |
 | --- | --- |
+| **Economist sign-off on the metric library.** The 3d definitions are seeded approved, owned by "Interim: Technical Lead" and flagged self-approved on every row; the methodology page says in words that no economist has reviewed them. Reviewed definitions are recorded as new versions, never edits. **This is a launch gate: the pilot does not go live in Phase 6 with the methodology still interim** | Phase 6 launch |
 | First paying customer segment: fintech API or institutional seats | Phase 9 vs Phase 10 priority |
 | How far the AI goes: explain-only, or registered advice | Phase 8 scope |
 | Priority figures and 3 vs 5 years of history. The **company list is settled** — the 18 of Appendix A, pending ticker and listing confirmation against the NGX directory | Phase 3c depth |

@@ -342,7 +342,17 @@ with operands as (
       -- A shape that needs last year, in a year that has no last year on this
       -- basis. Distinct from a missing figure: nothing is pending, there simply
       -- is no earlier year to average or compare against.
-      when s.kind in ('average_ratio', 'growth') and s.prior_period_end is null then 'no_prior_period'
+      --
+      -- "The year before" means the year before. The earlier year held might be
+      -- four years earlier, and measuring against it would publish a four-year
+      -- change under the name of an annual one, or average an opening balance
+      -- that is nothing of the kind. A gap in the history is not a prior period.
+      when s.kind in ('average_ratio', 'growth')
+       and (
+         s.prior_period_end is null
+         or s.financial_year - (extract(year from s.prior_period_end))::int <> 1
+       )
+        then 'no_prior_period'
       when s.kind = 'cagr' and (s.window_start_period_end is null or s.window_span < 1)
         then 'insufficient_history'
       when s.missing_count > 0 and s.any_other_currency then 'currency_mismatch'
