@@ -66,6 +66,7 @@ describe("migrations", () => {
       "202611260001_profile_history_for_figures_desk.sql",
       "202611260002_metric_definitions.sql",
       "202611260003_metric_calculation.sql",
+      "202611260004_metric_window_and_parent_profit.sql",
     ]);
   });
 });

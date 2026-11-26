@@ -52,8 +52,17 @@ describe("rendering a formula", () => {
     );
   });
 
-  it("states the window of a compound rate", () => {
-    expect(text("cagr", [input("base", "Revenue")], 5)).toBe("Revenue, compounded over 5 years");
+  it("names both endpoints of a compound rate, because both are required", () => {
+    // A five-year rate spans four years of compounding, and it is measured
+    // between those two years alone. Saying "compounded over 5 years" left it
+    // possible to read a rate measured over two years as one measured over
+    // five, which is what the formula now refuses to describe.
+    expect(text("cagr", [input("base", "Revenue")], 5)).toBe(
+      "Revenue now against revenue 4 financial years earlier, as an annual compound rate",
+    );
+    expect(text("cagr", [input("base", "Profit after tax")], 3)).toBe(
+      "Profit after tax now against profit after tax 2 financial years earlier, as an annual compound rate",
+    );
   });
 
   it("adds the parts of a sum in their declared order", () => {

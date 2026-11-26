@@ -108,6 +108,7 @@ describe("the seeded library", () => {
       `select d.code, d.kind, string_agg(distinct i.role, ',' order by i.role) as roles
          from public.metric_definitions d
          left join public.metric_definition_inputs i on i.definition_id = d.id
+        where d.is_active
         group by d.code, d.kind`,
     );
     for (const row of rows) {
@@ -183,11 +184,15 @@ describe("the library reads as its formulas", () => {
   // divided, and the two must describe the same arithmetic.
   it("renders what the seed declares", async () => {
     expect(await render("net_margin")).toBe("Profit after tax ÷ Revenue");
-    expect(await render("roe")).toBe("Profit after tax ÷ average shareholders' equity, opening and closing");
+    expect(await render("roe")).toBe(
+      "Profit attributable to the parent ÷ average shareholders' equity, opening and closing",
+    );
     expect(await render("revenue_growth")).toBe(
       "(Revenue this year − Revenue last year) ÷ Revenue last year",
     );
-    expect(await render("revenue_cagr_5y")).toBe("Revenue, compounded over 5 years");
+    expect(await render("revenue_cagr_5y")).toBe(
+      "Revenue now against revenue 4 financial years earlier, as an annual compound rate",
+    );
     expect(await render("free_cash_flow_calculated")).toBe(
       "Net cash from operations + Capital expenditure",
     );
@@ -390,14 +395,21 @@ describe("the shapes", () => {
 describe("who may read the methodology", () => {
   it("shows an approved definition and its inputs to any signed-in reader", async () => {
     await asUser(db, reader, async () => {
+      // One live version, and the retired one still readable beside it: a
+      // methodology a reader cannot look back at is not auditable, and a figure
+      // published under version 1 is still on a page somewhere.
       const { rows } = await db.query<{ count: number }>(
-        "select count(*)::int as count from public.metric_definitions where code = 'roe'",
+        "select count(*)::int as count from public.metric_definitions where code = 'roe' and is_active",
       );
       expect(rows[0].count).toBe(1);
+      const history = await db.query<{ count: number }>(
+        "select count(*)::int as count from public.metric_definitions where code = 'roe'",
+      );
+      expect(history.rows[0].count).toBeGreaterThan(1);
       const inputs = await db.query<{ count: number }>(
         `select count(*)::int as count from public.metric_definition_inputs i
            join public.metric_definitions d on d.id = i.definition_id
-          where d.code = 'roe'`,
+          where d.code = 'roe' and d.is_active`,
       );
       expect(inputs.rows[0].count).toBe(2);
     });

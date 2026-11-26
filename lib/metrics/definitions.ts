@@ -112,8 +112,16 @@ export function formulaText(definition: {
       const base = side("base");
       return `(${base} this year − ${base} last year) ÷ ${base} last year`;
     }
-    case "cagr":
-      return `${side("base")}, compounded over ${definition.windowYears ?? 5} years`;
+    case "cagr": {
+      // Both endpoints, named. "Compounded over five years" could be read as a
+      // description of whatever run of years happens to be held, which is the
+      // reading that let a two-year change be published as a five-year rate.
+      // A five-year rate spans four years of compounding, between this year and
+      // the year four years before it, and nothing in between is used.
+      const base = side("base");
+      const span = (definition.windowYears ?? 5) - 1;
+      return `${base} now against ${base.toLowerCase()} ${span} financial years earlier, as an annual compound rate`;
+    }
     case "average_ratio":
       return `${side("numerator")} ÷ average ${side("denominator").toLowerCase()}, opening and closing`;
     default:

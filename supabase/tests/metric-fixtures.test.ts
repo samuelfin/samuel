@@ -178,6 +178,7 @@ describe("worked examples, invented on purpose", () => {
         { line_item: "revenue", value_reported: 1000, source_page: 10 },
         { line_item: "profit_before_tax", value_reported: 150, source_page: 10 },
         { line_item: "profit_after_tax", value_reported: 100, source_page: 10 },
+        { line_item: "profit_attributable_to_parent", value_reported: 100, source_page: 10 },
       ],
     });
     await enter({
@@ -206,6 +207,7 @@ describe("worked examples, invented on purpose", () => {
         { line_item: "finance_costs", value_reported: 120, presentation: "bracketed", source_page: 20 },
         { line_item: "profit_before_tax", value_reported: 300, source_page: 20 },
         { line_item: "profit_after_tax", value_reported: 240, source_page: 20 },
+        { line_item: "profit_attributable_to_parent", value_reported: 240, source_page: 20 },
         { line_item: "earnings_per_share", value_reported: 2.4, source_page: 21 },
         { line_item: "dividend_per_share", value_reported: 0.6, source_page: 21 },
       ],
@@ -252,7 +254,51 @@ describe("worked examples, invented on purpose", () => {
   });
 
   it("averages a balance: 240 over the mean of 800 and 1,200 is twenty-four per cent", async () => {
+    // The invented company has no minority interest, so the profit attributable
+    // to the parent and the group's profit after tax are the same figure. That
+    // makes this a clean test of the averaging rather than of the numerator,
+    // which the real filing tests separately.
     expect(await value(invented, 2021, "roe")).toBe(24);
+  });
+
+  it("has no return on equity where the profit attributable to the parent was not entered", async () => {
+    // Never a fallback to the group's profit after tax. The two differ by the
+    // non-controlling interest, and substituting one for the other would publish
+    // a ratio whose numerator and denominator belong to different sets of owners.
+    const noParentLine = await makeCompany("No Parent Line Plc", "no-parent-line", "NOPL");
+    const document = await makeDocument(noParentLine, "No Parent Line Plc annual report");
+    for (const year of [2022, 2023]) {
+      await enter({
+        companyId: noParentLine,
+        documentId: document,
+        statementType: "balance_sheet",
+        year,
+        lines: [
+          { line_item: "total_assets", value_reported: 5000, source_page: 11 },
+          { line_item: "total_liabilities", value_reported: 3000, source_page: 11 },
+          { line_item: "shareholders_equity", value_reported: 2000, source_page: 11 },
+        ],
+      });
+    }
+    await enter({
+      companyId: noParentLine,
+      documentId: document,
+      statementType: "income",
+      year: 2023,
+      lines: [
+        { line_item: "revenue", value_reported: 1200, source_page: 10 },
+        { line_item: "profit_before_tax", value_reported: 300, source_page: 10 },
+        { line_item: "profit_after_tax", value_reported: 240, source_page: 10 },
+      ],
+    });
+
+    const roe = await answer(noParentLine, 2023, "roe");
+    expect(roe?.status).toBe("not_available");
+    expect(roe?.reason).toBe("input_missing");
+
+    // Return on assets is unaffected: it divides the group's profit by the
+    // group's assets, which belong to the same set of owners.
+    expect(await value(noParentLine, 2023, "roa")).toBe(4.8);
   });
 
   it("averages total assets the same way: 240 over the mean of 4,000 and 6,000 is 4.8 per cent", async () => {
@@ -271,7 +317,62 @@ describe("worked examples, invented on purpose", () => {
   });
 
   it("compounds: 1,000 to 1,464.1 over four years is ten per cent a year", async () => {
+    // FY2020 and FY2024 are both held, which is the whole requirement: a
+    // five-year rate spans four years of compounding, and the years between the
+    // endpoints are not used.
     const cagr = await answer(invented, 2024, "revenue_cagr_5y");
+    expect(cagr?.status).toBe("available");
+    expect(cagr?.window_span).toBe(4);
+    expect(Number(cagr?.value)).toBeCloseTo(10, 6);
+  });
+
+  it("refuses a five-year rate measured over fewer than five years", async () => {
+    // Two years of revenue is a one-year change. Publishing it as a five-year
+    // compound rate would be a false statement about the company, whatever the
+    // arithmetic says.
+    const young = await makeCompany("Two Years Plc", "two-years", "TWOY");
+    const document = await makeDocument(young, "Two Years Plc annual report");
+    for (const [year, revenue] of [
+      [2022, 1000],
+      [2023, 1500],
+    ] as const) {
+      await enter({
+        companyId: young,
+        documentId: document,
+        statementType: "income",
+        year,
+        lines: [
+          { line_item: "revenue", value_reported: revenue, source_page: 10 },
+          { line_item: "profit_before_tax", value_reported: 100, source_page: 10 },
+          { line_item: "profit_after_tax", value_reported: 80, source_page: 10 },
+        ],
+      });
+    }
+    const cagr = await answer(young, 2023, "revenue_cagr_5y");
+    expect(cagr?.status).toBe("not_available");
+    expect(cagr?.reason).toBe("insufficient_history");
+  });
+
+  it("allows a gap between the endpoints, because only the endpoints are used", async () => {
+    const gappy = await makeCompany("Gap Years Plc", "gap-years", "GAPY");
+    const document = await makeDocument(gappy, "Gap Years Plc annual report");
+    for (const [year, revenue] of [
+      [2019, 1000],
+      [2023, 1464.1],
+    ] as const) {
+      await enter({
+        companyId: gappy,
+        documentId: document,
+        statementType: "income",
+        year,
+        lines: [
+          { line_item: "revenue", value_reported: revenue, source_page: 10 },
+          { line_item: "profit_before_tax", value_reported: 100, source_page: 10 },
+          { line_item: "profit_after_tax", value_reported: 80, source_page: 10 },
+        ],
+      });
+    }
+    const cagr = await answer(gappy, 2023, "revenue_cagr_5y");
     expect(cagr?.status).toBe("available");
     expect(cagr?.window_span).toBe(4);
     expect(Number(cagr?.value)).toBeCloseTo(10, 6);
@@ -481,8 +582,6 @@ describe("a real filing: Zenith Bank Plc, FY2021 to FY2023", () => {
     expect(await value(zenith, 2023, "pat_growth")).toBeCloseTo(202.311633, 5);
     // (21.55 − 7.14) ÷ 7.14 = 201.820728%
     expect(await value(zenith, 2023, "eps_growth")).toBeCloseTo(201.820728, 5);
-    // 676,909 ÷ ((2,321,752 + 1,378,127) ÷ 2) = 36.590872%
-    expect(await value(zenith, 2023, "roe")).toBeCloseTo(36.590872, 5);
     // 676,909 ÷ ((20,368,455 + 12,285,629) ÷ 2) = 4.145938%
     expect(await value(zenith, 2023, "roa")).toBeCloseTo(4.145938, 5);
     // 1,410,885 ÷ 2,321,752 = 0.607681 times
@@ -496,13 +595,26 @@ describe("a real filing: Zenith Bank Plc, FY2021 to FY2023", () => {
   });
 
   it("computes FY2022 too, because FY2021's balance sheet was entered", async () => {
-    // 223,911 ÷ ((1,378,127 + 1,278,518) ÷ 2) = 16.856674%
-    expect(await value(zenith, 2022, "roe")).toBeCloseTo(16.856674, 5);
     // 223,911 ÷ ((12,285,629 + 9,447,843) ÷ 2) = 2.060518%
     expect(await value(zenith, 2022, "roa")).toBeCloseTo(2.060518, 5);
   });
 
+  it("waits for the profit attributable to the parent before reporting a return on equity", async () => {
+    // The filing prints it on page 39, beside the group's profit after tax, and
+    // until it is entered from that page there is no return on equity. The
+    // group's profit after tax is not a substitute: it includes the
+    // non-controlling interest, and the equity it would be divided by does not.
+    for (const year of [2022, 2023]) {
+      const roe = await answer(zenith, year, "roe");
+      expect(roe?.status).toBe("not_available");
+      expect(roe?.reason).toBe("input_missing");
+    }
+  });
+
   it("has no return on equity for FY2021, and says why", async () => {
+    // FY2021 is held as a balance sheet alone, so it has no opening balance
+    // before it. The prior-period reason comes first, because it is the one a
+    // reader can act on.
     const roe = await answer(zenith, 2021, "roe");
     expect(roe?.status).toBe("not_available");
     expect(roe?.reason).toBe("no_prior_period");
@@ -524,14 +636,13 @@ describe("a real filing: Zenith Bank Plc, FY2021 to FY2023", () => {
     expect(coverage?.status).toBe("not_available");
     expect(coverage?.reason).toBe("input_missing");
 
-    // And the five-year compound rate, where the earliest year inside the
-    // window is FY2021 — a year held as a balance sheet only. The rate is not
-    // quietly remeasured over the two years that do have revenue and published
-    // under the name of five: the revenue it needs is missing, and that is what
-    // it says.
+    // And the five-year compound rate, over a history that holds three years.
+    // A five-year rate spans four years of compounding; this one would span two,
+    // so there is no answer rather than a two-year change published under the
+    // name of five.
     const cagr = await answer(zenith, 2023, "revenue_cagr_5y");
     expect(cagr?.status).toBe("not_available");
-    expect(cagr?.reason).toBe("input_missing");
+    expect(cagr?.reason).toBe("insufficient_history");
   });
 
   it("carries every figure it used back to a page of the filing", async () => {
@@ -545,7 +656,7 @@ describe("a real filing: Zenith Bank Plc, FY2021 to FY2023", () => {
         `select i.line_item, i.period_role, i.source_page, d.title
            from public.company_metric_inputs i
            join public.documents d on d.id = i.document_id
-          where i.company_id = $1 and i.financial_year = 2023 and i.code = 'roe'
+          where i.company_id = $1 and i.financial_year = 2023 and i.code = 'roa'
           order by i.role, i.period_role`,
         [zenith],
       );
@@ -558,7 +669,7 @@ describe("a real filing: Zenith Bank Plc, FY2021 to FY2023", () => {
     // equity at both balance-sheet dates from page 40.
     expect(inputs.find((row) => row.line_item === "profit_after_tax")?.source_page).toBe(39);
     expect(
-      inputs.filter((row) => row.line_item === "shareholders_equity").map((row) => row.source_page),
+      inputs.filter((row) => row.line_item === "total_assets").map((row) => row.source_page),
     ).toEqual([40, 40]);
   });
 });

@@ -184,6 +184,10 @@ function income(revenue: number, pat: number, page = 40): LineInput[] {
     { line_item: "revenue", value_reported: revenue, source_page: page },
     { line_item: "profit_before_tax", value_reported: Math.round(pat * 1.4), source_page: page },
     { line_item: "profit_after_tax", value_reported: pat, source_page: page },
+    // No minority interest in an invented company, so the parent's share is the
+    // whole of it. Return on equity needs this line and never substitutes the
+    // group's figure for it.
+    { line_item: "profit_attributable_to_parent", value_reported: pat, source_page: page },
   ];
 }
 
@@ -356,12 +360,17 @@ describe("what a calculation will not mix", () => {
       periodEnd: "2014-12-31",
       statementType: "balance_sheet",
       currency: "NGN",
-      lines: balance(5000, 2000),
+      lines: [
+        ...balance(5000, 2000),
+        { line_item: "total_borrowings", value_reported: 1200, source_page: 61 },
+      ],
     });
 
-    // The income statement carries three figures and the balance sheet three, so
-    // the basis is decided by the tie-break on currency code: NGN. The dollar
-    // income statement is then a figure in another currency, not a missing one.
+    // The naira balance sheet carries more figures than the dollar income
+    // statement, so the period is read in naira. The dollar revenue and profit
+    // are then figures in another currency rather than missing ones, and saying
+    // so is the difference between "nobody has entered this" and "these two may
+    // not be divided".
     const margin = await metric(other, 2014, "net_margin");
     expect(margin?.status).toBe("not_available");
     expect(margin?.reason).toBe("currency_mismatch");
@@ -581,7 +590,7 @@ describe("how calculated", () => {
     expect(rows.map((r) => `${r.role}/${r.period_role}/${r.line_item}`)).toEqual([
       "denominator/current/shareholders_equity",
       "denominator/prior/shareholders_equity",
-      "numerator/current/profit_after_tax",
+      "numerator/current/profit_attributable_to_parent",
     ]);
     expect(rows.every((r) => r.source_page !== null && r.document_id !== null)).toBe(true);
     expect(day(rows.find((r) => r.period_role === "prior")?.figure_period_end ?? null)).toBe("2009-12-31");
