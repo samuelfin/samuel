@@ -88,7 +88,9 @@ export default async function FiguresDeskPage({
     ? assignmentFor(assignments, formCompanyId, formPeriodEnd || "9999-12-31")
     : null;
 
-
+  // The figures the form may carry: the core set plus the company's sector set
+  // for that period. Read here, and read again in the action — a form's hidden
+  // fields are a suggestion, not an authority.
   const definitions = templateLines.filter(
     (line) =>
       line.statementType === statementType &&

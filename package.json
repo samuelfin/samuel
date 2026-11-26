@@ -20,6 +20,7 @@
     "verify:leadership": "node scripts/verify-leadership.mjs",
     "verify:ngx": "node scripts/verify-ngx-directory.mjs",
     "seed:pilot": "node scripts/seed-pilot.mjs",
+    "source:documents": "node scripts/source-documents.mjs",
     "audit:deps": "npm audit --audit-level=high",
     "check": "npm run lint && npm run typecheck && npm run test && npm run scan:secrets"
   },

@@ -129,6 +129,35 @@ describe("the pasted-text extractor", () => {
     expect(result.unmatched).toEqual(["Notes to the financial statements"]);
   });
 
+  /**
+   * A table row is a label, a figure and a page. A paste that lost its newlines
+   * is not one, and the figure match walks each line more than once — the first
+   * version of that pattern took 17 seconds to fail on a 20,000-character line
+   * and about two minutes on 100,000. Set aside before matching now, and the
+   * pattern's repeats are bounded as well, so neither half depends on the other.
+   */
+  it("sets aside a line too long to be one row, quickly", async () => {
+    const long = `Revenue ${"1 ".repeat(60_000)}x`;
+    const started = Date.now();
+    const result = await extract(long);
+    const elapsed = Date.now() - started;
+
+    expect(result.figures).toEqual([]);
+    expect(result.unmatched).toHaveLength(1);
+    expect(result.unmatched[0]).toMatch(/\(too long to read as one figure\)$/);
+    // Generous enough not to be flaky on a loaded machine, and still three
+    // orders of magnitude under what the unbounded pattern took.
+    expect(elapsed).toBeLessThan(1_000);
+  });
+
+  it("still reads a long but reasonable line", async () => {
+    const label = "Revenue";
+    const padded = `${label}${" ".repeat(200)}1,234,567 p.40`;
+    const result = await extract(padded);
+    expect(result.figures).toHaveLength(1);
+    expect(result.figures[0]).toMatchObject({ lineItem: "revenue", valueReported: 1234567, sourcePage: 40 });
+  });
+
   it("does not take a page number as the figure", async () => {
     const result = await extract("Revenue p.40 1,000");
     expect(result.figures[0]).toMatchObject({ valueReported: 1000, sourcePage: 40 });

@@ -347,6 +347,53 @@ describe("the desk can see what it needs", () => {
     });
   });
 
+  /**
+   * Row-level security filters rather than errors, so a loader reading a table
+   * its role is not in gets an empty result and reports a plausible answer that
+   * happens to be false — version 0, no unreviewed changes. The figures desk
+   * renders neither field today; the next caller would have believed it.
+   */
+  it("shows the figures desk a company's profile history", async () => {
+    const { rows: owned } = await db.query<{ n: number }>(
+      "select count(*)::int as n from public.company_profile_versions where company_id = $1",
+      [company],
+    );
+    expect(owned[0].n).toBeGreaterThan(0);
+
+    await asUser(db, financial, async () => {
+      const { rows } = await db.query<{ n: number }>(
+        "select count(*)::int as n from public.company_profile_versions where company_id = $1",
+        [company],
+      );
+      expect(rows[0].n).toBe(owned[0].n);
+    });
+  });
+
+  /**
+   * A replacement policy has to carry the name it replaces. A new name creates a
+   * second policy beside the old one, and because policies are OR'd the desk
+   * works while the narrower rule stays behind — a widening that looks like it
+   * worked and a tightening that silently did not.
+   */
+  it("leaves one select policy per table it rewrote", async () => {
+    const { rows } = await db.query<{ tablename: string; n: number }>(
+      `select tablename, count(*)::int as n
+         from pg_policies
+        where schemaname = 'public'
+          and cmd = 'SELECT'
+          and tablename in ('financial_statements', 'financial_statement_lines',
+                            'company_profile_versions', 'figure_suggestions',
+                            'figure_suggestion_batches')
+        group by tablename order by tablename`,
+    );
+    // One policy each. companies, instruments and their identifiers keep two by
+    // design — a reader's and the staff one — so they are not in this list.
+    for (const row of rows) {
+      expect(row.n, row.tablename).toBe(1);
+    }
+    expect(rows).toHaveLength(5);
+  });
+
   it("still shows an editor nothing it had no business seeing", async () => {
     await asUser(db, editor, async () => {
       const { rows } = await db.query("select id from public.companies where id = $1", [pendingCompany]);

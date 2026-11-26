@@ -134,7 +134,22 @@ export function StatementForm({
   const [magnitude, setMagnitude] = useState<Magnitude>(supersedes?.magnitude ?? "thousands");
   // The per-line scale an analyst has chosen, held here rather than left to the
   // DOM so the preview can read the same value the form will post.
-  const [lineScales, setLineScales] = useState<Record<string, Magnitude | "">>({});
+  //
+  // Seeded from the statement being revised, for the same reason the figures
+  // and the statement-level scale are: a count entered as "31.4 billions" came
+  // back into an unseeded form as a bare 31.4 and would have been re-stored as
+  // 31.4 — a correction that silently changed a figure nobody meant to touch.
+  // Only a line whose own scale was recorded is seeded; money inherits the
+  // statement's heading, so leaving those blank is what keeps them inheriting.
+  const [lineScales, setLineScales] = useState<Record<string, Magnitude | "">>(() => {
+    const seeded: Record<string, Magnitude | ""> = {};
+    for (const line of supersedes?.lines ?? []) {
+      if (!magnitudeApplies(line.unitKind) && line.reportedMagnitude !== "units") {
+        seeded[line.lineItem] = line.reportedMagnitude;
+      }
+    }
+    return seeded;
+  });
   const [figures, setFigures] = useState<Record<string, string>>(() => {
     const seeded: Record<string, string> = {};
     for (const line of supersedes?.lines ?? []) {
@@ -804,9 +819,17 @@ export function SuggestionQueue({
                     <tr key={suggestion.id}>
                       <td>{suggestion.label}</td>
                       <td>
+                        {/* The batch's scale applies to money and nothing else.
+                            Falling back to it unconditionally labelled an
+                            earnings-per-share figure "4.25 thousands per share"
+                            in a thousands batch, while 4.25 is what would be
+                            stored — the same preview-against-stored divergence
+                            this stage fixed on the entry form, in the other
+                            panel. */}
                         {formatReported(
                           suggestion.valueReported,
-                          suggestion.magnitude ?? batch.magnitude,
+                          suggestion.magnitude ??
+                            (magnitudeApplies(suggestion.unitKind) ? batch.magnitude : "units"),
                           suggestion.unitLabel,
                         )}
                         {suggestion.presentation === "bracketed" ? " (bracketed)" : ""}

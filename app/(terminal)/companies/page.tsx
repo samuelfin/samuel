@@ -7,16 +7,13 @@ import { unstable_rethrow } from "next/navigation";
 export const metadata: Metadata = { title: "Companies" };
 
 export default async function CompaniesPage() {
-  // The loader throws rather than returning an empty list, so a broken query is
-  // never mistaken for an empty register. The panel reports the failure on its
-  // own instead of taking the page down.
+   
   let companies: CompanyProfile[] | null = null;
   let failure: string | null = null;
   try {
     companies = await listCompanies();
   } catch (error) {
-    // redirect(), notFound() and prerender bailouts all arrive as thrown
-    // errors; reporting one as a panel failure would swallow it.
+    
     unstable_rethrow(error);
     failure = error instanceof Error ? error.message : "The directory could not be loaded.";
   }

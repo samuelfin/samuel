@@ -715,6 +715,8 @@ export interface SuggestedFigure {
   lineItem: string;
   label: string;
   unitLabel: string;
+  /** Carried so the queue can tell whether the batch's scale applies at all. */
+  unitKind: UnitKind;
   valueReported: number;
   presentation: Presentation;
   magnitude: Magnitude | null;
@@ -814,6 +816,7 @@ export async function listSuggestionBatchesForDesk(limit = 40): Promise<Suggesti
         lineItem: suggestion.line_item,
         label: definition?.label ?? suggestion.line_item,
         unitLabel: definition?.unitLabel ?? "",
+        unitKind: definition?.unitKind ?? ("currency" as UnitKind),
         valueReported: toNumber(suggestion.value_reported),
         presentation: suggestion.presentation,
         magnitude: suggestion.magnitude,

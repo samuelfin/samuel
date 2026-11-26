@@ -68,6 +68,13 @@ function normaliseLabel(value: string): string {
     .trim();
 }
 
+/**
+ * The longest line that could be one row of a statement. A label, a figure and
+ * a page reference do not need more; anything longer is a paste that lost its
+ * newlines, and reading it as a single figure is not a service to anyone.
+ */
+const MAX_LINE = 400;
+
 const PAGE_PATTERNS = [
   /\bp(?:age|g)?\.?\s*(\d{1,5})\b/i,
   /\[(\d{1,5})\]\s*$/,
@@ -136,12 +143,28 @@ export const manualPasteExtractor: FigureExtractor = {
       const line = rawLine.trim();
       if (!line) continue;
 
+      // A table row is a label, a figure and a page. Nothing this long is one,
+      // and the matching below walks the line more than once, so an
+      // unreasonable line is set aside rather than chewed over. A newline-free
+      // OCR paste is the realistic way to produce one by accident.
+      if (line.length > MAX_LINE) {
+        unmatched.push(`${line.slice(0, 80)}… (too long to read as one figure)`);
+        continue;
+      }
+
       const { page, rest } = readPage(line);
       const scale = readScale(rest);
 
       // The figure is the last number-like token on the line; the label is what
       // precedes it. A table row reads that way round in every filing.
-      const figureMatch = /(\(?\s*[₦$€£]?\s*-?[\d][\d,\s_]*(?:\.\d+)?\s*\)?)\s*$/.exec(
+      //
+      // Every quantifier here is bounded. The first version put `[\d,\s_]*`
+      // next to `\s*` before a `$`, which is ambiguous — the two can divide the
+      // same run of spaces between them many ways — so a long line with no
+      // match took quadratic time to fail: one 100,000-character line measured
+      // 110 seconds of blocked event loop. Bounded repeats leave the engine a
+      // fixed number of divisions to try, whatever arrives.
+      const figureMatch = /([(]?[ ]?[₦$€£]?[ ]?-?\d[\d,_ ]{0,39}(?:\.\d{1,6})?[ ]?[)]?)[ ]*$/.exec(
         rest.replace(/\b(thousands?|millions?|billions?|bn|mn)\b/gi, " ").trim(),
       );
       if (!figureMatch) {

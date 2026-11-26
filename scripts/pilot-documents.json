@@ -1,0 +1,50 @@
+[
+  {
+    "company": "Guaranty Trust Holding Company Plc",
+    "title": "GTCO FY2024 Annual Report",
+    "kind": "annual_report",
+    "url": "https://gtco-plc.files.svdcdn.com/production/annual-reports/2024-annual-report/GTCO-FY-2024-Annual-Report.pdf",
+    "publishedAt": "2025-03-31",
+    "periodEnd": "2024-12-31"
+  },
+  {
+    "company": "Dangote Cement Plc",
+    "title": "Dangote Cement FY2024 Annual Report and Accounts",
+    "kind": "annual_report",
+    "url": "https://dangotecement.com/wp-content/uploads/2025/05/Dangote-Cement-FY-2024-Annual-Report.pdf",
+    "publishedAt": "2025-05-01",
+    "periodEnd": "2024-12-31"
+  },
+  {
+    "company": "MTN Nigeria Communications Plc",
+    "title": "MTN Nigeria Communications Plc Annual Report 2024",
+    "kind": "annual_report",
+    "url": "https://eu-assets.contentstack.com/v3/assets/bltacf39601912ccb86/blte76eb08614ce3f4d/67fd29c8b15db33f19e846f3/MTN_Nigeria_Annual_Report_2024_.pdf",
+    "publishedAt": "2025-04-01",
+    "periodEnd": "2024-12-31"
+  },
+  {
+    "company": "MTN Nigeria Communications Plc",
+    "title": "MTN Nigeria Communications Plc Audited Consolidated and Separate Financial Statements FY2024",
+    "kind": "financial_statements",
+    "url": "https://fmdqgroup.com/exchange/download/706/corporate-disclosure/1085551/audited-consolidated-and-separate-financial-statements-december-31-2024.pdf",
+    "publishedAt": "2025-03-17",
+    "periodEnd": "2024-12-31"
+  },
+  {
+    "company": "Seplat Energy Plc",
+    "title": "Seplat Energy Plc FY2024 Audited Results Announcement",
+    "kind": "financial_statements",
+    "url": "https://www.rns-pdf.londonstockexchange.com/rns/1941Z_1-2025-3-4.pdf",
+    "publishedAt": "2025-03-04",
+    "periodEnd": "2024-12-31"
+  },
+  {
+    "company": "Zenith Bank Plc",
+    "title": "Zenith Bank Plc Interim Report H1 2024",
+    "kind": "interim_report",
+    "url": "https://doclib.ngxgroup.com/Financial_NewsDocs/42084_ZENITH_BANK_PLC-_QUARTER_2_-_FINANCIAL_STATEMENT_FOR_2024_FINANCIAL_STATEMENTS_AUGUST_2024.pdf",
+    "publishedAt": "2024-08-01",
+    "periodEnd": "2024-06-30"
+  }
+]
