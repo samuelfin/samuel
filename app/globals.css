@@ -467,3 +467,22 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #d8b9
 .methodology-entry dd{margin:0;font-size:10.5px;color:#9aa4a9}
 .methodology-entry.is-waiting h4{color:#b9c4ca}
 @media (max-width:700px){.methodology-entry dl{grid-template-columns:1fr}}
+
+/* The printable five-year comparison (stage 3d.5). */
+.five-year{display:grid;gap:18px;max-width:1000px;margin:0 auto;padding:4px}
+.five-year-head{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;border-bottom:1px solid #20282e;padding-bottom:10px}
+.five-year-eyebrow{margin:0;font:9px var(--mono);letter-spacing:1px;color:#a18b5c;text-transform:uppercase}
+.five-year h1{margin:4px 0 0;font:600 20px var(--head);color:#e8ebea}
+.five-year-actions{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;font:10px var(--mono)}
+.five-year-actions a{color:#9ec8e0}
+.five-year-actions span{color:#78848a}
+.five-year-sheet h2{margin:0 0 6px;font:600 11px var(--mono);letter-spacing:1px;color:#8b979d;text-transform:uppercase}
+.five-year-sheet .figure-table td{vertical-align:top}
+@media print{
+  .five-year{max-width:none;color:#111}
+  .five-year h1{color:#111}
+  .five-year-actions{display:none}
+  .five-year-sheet h2{color:#333}
+  .five-year-sheet .figure-table td,.five-year-sheet .figure-table th{color:#111;border-color:#ccc}
+  .term-sidebar,.term-topbar,.term-footer,.company-tabs{display:none}
+}

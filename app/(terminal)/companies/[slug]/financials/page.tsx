@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Notice, Panel, PanelGrid } from "@/components/terminal/ui";
 import { FinancialsPanel } from "@/components/terminal/financials-panel";
 import { HistoryChart } from "@/components/terminal/history-charts";
@@ -71,6 +72,17 @@ export default async function CompanyFinancialsPage({ params }: Props) {
               kind="bars"
             />
           )}
+        </Panel>
+
+        <Panel title="Take it with you" span={12} meta="The same figures, with their sources">
+          <p className="form-note">
+            The five-year comparison carries every figure with the filing and page it came from, the
+            ratios with the formula version that produced them, and the reason wherever a year has no
+            answer.{" "}
+            <a href={"/companies/" + company.slug + "/five-year.xlsx"}>Download as Excel</a>, or{" "}
+            <Link href={"/companies/" + company.slug + "/five-year"}>open the printable version</Link>{" "}
+            and print it to a PDF.
+          </p>
         </Panel>
 
         <Panel title="Financial history" span={12} meta="As reported, with the page for every figure">
