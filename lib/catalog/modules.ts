@@ -27,6 +27,7 @@ export const MODULES: readonly TerminalModule[] = [
   { code: "NEWS", label: "News", href: "/news", group: "Research", phase: 3, description: "Market news, announcements and corporate actions", keywords: ["announcements", "corporate actions", "ipo", "dividends", "rights issue"] },
   { code: "RES", label: "Research", href: "/research", group: "Research", phase: 3, description: "SFI research reports and analysis", keywords: ["reports", "analysis", "sector"] },
   { code: "AI", label: "AI Intelligence", href: "/ai", group: "Research", phase: 4, description: "Source-grounded research assistant", keywords: ["assistant", "ask", "chat", "analysis", "compare"] },
+  { code: "METH", label: "Methodology", href: "/methodology", group: "Research", phase: 3, description: "Every formula SFI calculates a ratio with, its version, owner and approver", keywords: ["formula", "definition", "ratio", "calculation", "version", "approval"] },
   { code: "WL", label: "Watchlists", href: "/watchlists", group: "Workspace", phase: 5, description: "Companies and indicators you follow", keywords: ["watch", "follow", "favourites"] },
   { code: "ALRT", label: "Alerts", href: "/alerts", group: "Workspace", phase: 5, description: "Price, announcement and release alerts", keywords: ["notify", "notifications", "price alert"] },
   { code: "RPT", label: "Reports", href: "/reports", group: "Workspace", phase: 3, description: "Exports and generated reports", keywords: ["export", "pdf", "csv", "excel", "download"] },

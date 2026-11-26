@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   formatMetricValue,
   formulaText,
@@ -115,7 +116,10 @@ function HowCalculated({
           {definition.decisionReason ? " · " + definition.decisionReason : ""}
         </dd>
       </dl>
-      <p className="ratio-interim">Interim methodology, not yet reviewed by an economist.</p>
+      <p className="ratio-interim">
+        Interim methodology, not yet reviewed by an economist.{" "}
+        <Link href="/methodology">Every formula SFI publishes a number under</Link>.
+      </p>
 
       {years.map((year) => {
         const used = inputs.filter((input) => input.financialYear === year.financialYear);

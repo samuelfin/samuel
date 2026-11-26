@@ -11,8 +11,9 @@ function unique<T>(values: T[]) {
 
 describe("modules", () => {
   it("has the navigation modules from the brief, with unique codes and routes", () => {
-    // Twelve from the original brief, plus Leadership at stage 3b.
-    expect(MODULES).toHaveLength(13);
+    // Twelve from the original brief, plus Leadership at 3b and Methodology
+    // at 3d, where the first calculated figures appear.
+    expect(MODULES).toHaveLength(14);
     expect(unique(MODULES.map((m) => m.code))).toBe(true);
     expect(unique(MODULES.map((m) => m.href))).toBe(true);
   });
@@ -22,6 +23,7 @@ describe("modules", () => {
     expect(moduleForPath("/people/ada-okonkwo")?.code).toBe("LD");
     expect(moduleForPath("/")?.code).toBe("OVR");
     expect(moduleForPath("/economy")?.code).toBe("ECO");
+    expect(moduleForPath("/methodology")?.code).toBe("METH");
     expect(moduleForPath("/nowhere")).toBeUndefined();
   });
 

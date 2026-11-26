@@ -452,3 +452,18 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #d8b9
 .coverage-years em{font:11px var(--sans);color:#c9bb94;font-style:normal}
 .coverage-years small{grid-column:2;color:#78848a;font-size:9.5px;line-height:1.5}
 .coverage-years li[data-held="no"] span{color:#6d787e}
+
+/* The methodology page (stage 3d.5). */
+.methodology{display:grid;gap:16px;padding:12px 14px}
+.methodology-group h3{margin:0 0 8px;font:600 11px var(--mono);letter-spacing:1px;color:#8b979d;text-transform:uppercase}
+.methodology-entry{padding:10px 0;border-top:1px solid #20282e}
+.methodology-group .methodology-entry:first-of-type{border-top:0}
+.methodology-entry header{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;justify-content:space-between}
+.methodology-entry h4{margin:0;font:600 12.5px var(--head);color:#e6edf0}
+.methodology-entry code{display:block;margin:6px 0;font:10.5px var(--mono);color:#c9bb94;overflow-wrap:anywhere}
+.methodology-entry p{margin:0 0 6px;font-size:11.5px;color:#cdd6db;line-height:1.65;max-width:70ch}
+.methodology-entry dl{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;margin:0}
+.methodology-entry dt{font:9px var(--mono);letter-spacing:.5px;color:#78848a;text-transform:uppercase}
+.methodology-entry dd{margin:0;font-size:10.5px;color:#9aa4a9}
+.methodology-entry.is-waiting h4{color:#b9c4ca}
+@media (max-width:700px){.methodology-entry dl{grid-template-columns:1fr}}
