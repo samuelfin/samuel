@@ -440,3 +440,15 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #d8b9
   .chart-bar,.chart-dot{fill:CanvasText;stroke:Canvas}
   .chart-line{stroke:CanvasText}
 }
+
+/* The coverage score (stage 3d.5). */
+.coverage-score{display:grid;gap:10px;padding:12px 14px}
+.coverage-headline{margin:0;font:600 13px var(--head);color:#e6edf0}
+.coverage-years{display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.coverage-years li{display:grid;grid-template-columns:62px 1fr;gap:8px;align-items:baseline;padding-bottom:5px;border-bottom:1px solid #1d252b}
+.coverage-years li:last-child{border-bottom:0}
+.coverage-years span{font:9.5px var(--mono);color:#78848a}
+.coverage-years strong{font:11px var(--sans);color:#cdd6db}
+.coverage-years em{font:11px var(--sans);color:#c9bb94;font-style:normal}
+.coverage-years small{grid-column:2;color:#78848a;font-size:9.5px;line-height:1.5}
+.coverage-years li[data-held="no"] span{color:#6d787e}

@@ -2,11 +2,19 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { DefinitionList, Notice, Panel, PanelGrid } from "@/components/terminal/ui";
 import { OverviewTiles, type HeadlineYear } from "@/components/terminal/company-panels";
+import { CoveragePanel } from "@/components/terminal/coverage-panel";
 import { LeadershipPanel } from "@/components/terminal/leadership-panel";
 import { listAnnouncementsForCompany } from "@/lib/data/announcements";
 import { listEditorialForCompany } from "@/lib/data/editorial";
 import { listLeadershipForCompany } from "@/lib/data/people";
-import { listFinancialsForCompany, type ReaderStatement } from "@/lib/data/financials";
+import {
+  assignmentFor,
+  listFinancialsForCompany,
+  listTemplateAssignments,
+  listTemplateLines,
+  type ReaderStatement,
+} from "@/lib/data/financials";
+import { coverageScore } from "@/lib/metrics/coverage";
 import { listCompanyMetrics, listMetricDefinitions } from "@/lib/data/metrics";
 import { ANNOUNCEMENT_CATEGORY_LABELS, type AnnouncementCategory } from "@/lib/announcements/validation";
 import { EDITORIAL_KIND_LABELS } from "@/lib/editorial/validation";
@@ -20,6 +28,9 @@ import {
 } from "./shared";
 
 type Props = { params: Promise<{ slug: string }> };
+
+/** The pilot window: FY2021 to FY2025, as the roadmap and the figures desk use. */
+const COVERAGE_YEARS = [2021, 2022, 2023, 2024, 2025] as const;
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
@@ -78,6 +89,17 @@ export default async function CompanyOverviewPage({ params }: Props) {
     panel(listLeadershipForCompany(company.id), "Could not load leadership."),
   ]);
 
+  // Coverage is loaded on its own: a failure there costs the page one panel, not
+  // its headline figures.
+  const coverage = await panel(
+    Promise.all([listTemplateLines(), listTemplateAssignments()]),
+    "Could not work out how much of the history is held.",
+  );
+  // The sector template in force now decides which figures count as required.
+  const sectorTemplate = coverage.ok
+    ? (assignmentFor(coverage.data[1], company.id, "9999-12-31")?.templateId ?? null)
+    : null;
+
   return (
     <CompanyFrame company={company} tab="">
       <PanelGrid>
@@ -117,6 +139,38 @@ export default async function CompanyOverviewPage({ params }: Props) {
               statements={headline.data[0]}
               metrics={headline.data[1]}
               definitions={headline.data[2]}
+            />
+          )}
+        </Panel>
+
+        <Panel title="How much we hold" span={5} meta="Only years a person has checked">
+          {!coverage.ok || !headline.ok ? (
+            <Notice tone="caution">
+              {!coverage.ok ? coverage.error : "Could not load the figures this is counted from."}
+            </Notice>
+          ) : (
+            <CoveragePanel
+              score={coverageScore({
+                years: COVERAGE_YEARS,
+                statements: headline.data[0]
+                  .filter((statement) => statement.periodType === "FY")
+                  .map((statement) => ({
+                    financialYear: Number(statement.periodEnd.slice(0, 4)),
+                    statementType: statement.statementType,
+                    lineItems: statement.figures.map((figure) => figure.lineItem),
+                  })),
+                required: coverage.data[0]
+                  .filter(
+                    (line) =>
+                      line.isRequired &&
+                      (line.templateId === "core" || line.templateId === sectorTemplate),
+                  )
+                  .map((line) => ({
+                    statementType: line.statementType,
+                    lineItem: line.lineItem,
+                    label: line.label,
+                  })),
+              })}
             />
           )}
         </Panel>
