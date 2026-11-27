@@ -2,11 +2,9 @@
 
 import { type SubmitEvent, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginForm({ configured, setupRequired }: { configured: boolean; setupRequired: boolean }) {
-  const router = useRouter();
   const setup = setupRequired || !configured;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,8 +20,15 @@ export default function LoginForm({ configured, setupRequired }: { configured: b
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      router.replace("/");
-      router.refresh();
+      // A full page load, not router.replace + refresh. The client-side swap
+      // raced the new session cookie: the router could render the cached
+      // signed-out payload for "/" and leave a blank screen until a manual
+      // reload. A document navigation sends the cookie with the first request,
+      // as node_modules/next/dist/docs/01-app/02-guides/preserving-ui-state.md
+      // recommends for authentication changes.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- see above
+      window.location.assign("/");
+      return;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign in failed. Please try again.");
     } finally {

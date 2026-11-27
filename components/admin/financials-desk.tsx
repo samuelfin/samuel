@@ -5,6 +5,7 @@ import {
   assignTemplateAction,
   closeBatchAction,
   decideSuggestionAction,
+  recordAcceptedAction,
   queueSuggestionsAction,
   recordSuccessionAction,
   reviewStatementAction,
@@ -679,6 +680,7 @@ export function SuggestionQueue({
   const [queueState, queueAction, queueing] = useActionState(queueSuggestionsAction, EMPTY);
   const [decideState, decideAction, deciding] = useActionState(decideSuggestionAction, EMPTY);
   const [closeState, closeAction, closing] = useActionState(closeBatchAction, EMPTY);
+  const [recordState, recordAction, recording] = useActionState(recordAcceptedAction, EMPTY);
 
   const open = batches.filter((b) => b.status === "open");
 
@@ -779,6 +781,7 @@ export function SuggestionQueue({
 
       <Message state={decideState} />
       <Message state={closeState} />
+      <Message state={recordState} />
 
       {open.length === 0 ? (
         <p className="empty-state">Nothing queued. Suggestions are never entered without being checked.</p>
@@ -801,7 +804,7 @@ export function SuggestionQueue({
               </p>
               <p className="muted">
                 {pending.length} to check, {accepted.length} accepted. Accepting one does not record a
-                figure: enter the statement to do that.
+                figure: once every one is decided, record the accepted figures below.
               </p>
 
               <table className="figure-table">
@@ -862,6 +865,33 @@ export function SuggestionQueue({
                   ))}
                 </tbody>
               </table>
+
+              {pending.length === 0 && accepted.length > 0 ? (
+                <form action={recordAction} className="inline-form">
+                  <input type="hidden" name="batchId" value={batch.id} />
+                  <label>
+                    Audited?
+                    <select name="audited" required defaultValue="">
+                      <option value="">Choose…</option>
+                      <option value="yes">Audited</option>
+                      <option value="no">Unaudited</option>
+                    </select>
+                  </label>
+                  <label>
+                    Basis
+                    <select name="consolidated" required defaultValue="">
+                      <option value="">Choose…</option>
+                      <option value="yes">Group (consolidated)</option>
+                      <option value="no">Company only</option>
+                    </select>
+                  </label>
+                  <button type="submit" disabled={recording}>
+                    {recording
+                      ? "Recording…"
+                      : `Record the ${accepted.length} accepted figure${accepted.length === 1 ? "" : "s"}`}
+                  </button>
+                </form>
+              ) : null}
 
               <form action={closeAction} className="inline-form">
                 <input type="hidden" name="batchId" value={batch.id} />

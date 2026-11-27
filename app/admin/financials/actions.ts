@@ -449,6 +449,116 @@ export async function closeBatchAction(
   return { notice: statementId ? "Closed against that statement." : "Closed." };
 }
 
+/**
+ * Records a reading's accepted figures as a statement, so a person who has
+ * checked every suggestion against the page does not type the same numbers in
+ * a second time.
+ *
+ * What it does not do is decide anything on the person's behalf. Every figure
+ * it records was accepted one at a time by a person; the run must have no
+ * suggestion left undecided; rejected ones are left out; and whether the
+ * statement is audited and consolidated is asserted on the form, never
+ * inferred. The figures go in exactly as read — value as printed, its
+ * presentation, its page — through record_statement, which applies the same
+ * template, sign and required-line rules as a typed entry, marks each line
+ * ai_assisted, and leaves the statement waiting for a check like any other.
+ */
+export async function recordAcceptedAction(
+  _prev: FinancialsActionState,
+  form: FormData,
+): Promise<FinancialsActionState> {
+  const staff = await requireStaffRole(["financial_analyst"]);
+
+  const batchId = field(form, "batchId");
+  const audited = field(form, "audited");
+  const consolidated = field(form, "consolidated");
+  if (!UUID.test(batchId)) return { error: "Choose a run to record." };
+  if (audited !== "yes" && audited !== "no") return { error: "Say whether the statement is audited." };
+  if (consolidated !== "yes" && consolidated !== "no") {
+    return { error: "Say whether these are group (consolidated) or company-only figures." };
+  }
+
+  const admin = createAdminClient();
+  if (!admin) return { error: "Server credentials are not configured." };
+
+  const { data: batch, error: batchError } = await admin
+    .from("figure_suggestion_batches")
+    .select(
+      "id, company_id, document_id, statement_type, period_type, period_start, period_end, currency, magnitude, status",
+    )
+    .eq("id", batchId)
+    .maybeSingle();
+  if (batchError) return { error: "The run could not be read." };
+  if (!batch) return { error: "That run no longer exists." };
+  if (batch.status !== "open") return { error: "That run is already closed." };
+
+  const { data: suggestions, error: suggestionError } = await admin
+    .from("figure_suggestions")
+    .select("line_item, value_reported, presentation, magnitude, source_page, status")
+    .eq("batch_id", batchId);
+  if (suggestionError || !suggestions) return { error: "The run's figures could not be read." };
+
+  const pending = suggestions.filter((s) => s.status === "pending").length;
+  if (pending > 0) {
+    return {
+      error: `${pending} figure${pending === 1 ? " is" : "s are"} still to check. Accept or reject each one first.`,
+    };
+  }
+  const accepted = suggestions.filter((s) => s.status === "accepted");
+  if (accepted.length === 0) return { error: "Nothing in this run was accepted, so there is nothing to record." };
+
+  const { data: document } = await admin
+    .from("documents")
+    .select("published_at")
+    .eq("id", batch.document_id)
+    .maybeSingle();
+
+  const { data: statementId, error } = await admin.rpc("record_statement", {
+    actor_user: staff.userId,
+    p_company_id: batch.company_id,
+    p_statement_type: batch.statement_type,
+    p_period_type: batch.period_type,
+    p_period_start: batch.period_start,
+    p_period_end: batch.period_end,
+    p_audited: audited === "yes",
+    p_consolidated: consolidated === "yes",
+    p_currency: batch.currency,
+    p_magnitude: batch.magnitude,
+    p_document_id: batch.document_id,
+    p_lines: accepted.map((s) => ({
+      line_item: s.line_item,
+      value_reported: Number(s.value_reported),
+      presentation: s.presentation,
+      magnitude: s.magnitude,
+      source_page: s.source_page,
+      as_restated: false,
+      ai_assisted: true,
+      note: null,
+    })),
+    p_published_at: document?.published_at ?? null,
+    p_supersedes_id: null,
+    p_restatement_kind: null,
+    p_correction_reason: null,
+  });
+  if (error) return { error: explain(error) };
+
+  // Tie the run to what it produced, so an AI-assisted statement can be traced
+  // back to the reading. The statement stands even if this step fails.
+  const { error: closeError } = await admin.rpc("close_suggestion_batch", {
+    target_batch: batchId,
+    actor_user: staff.userId,
+    p_statement_id: statementId,
+  });
+
+  revalidateFinancials();
+  if (closeError) {
+    return {
+      notice: `Recorded ${accepted.length} figures, waiting for a check. The run could not be closed against it: ${explainSuggestion(closeError)}`,
+    };
+  }
+  return { notice: `Recorded ${accepted.length} figures as a statement, waiting for a check.` };
+}
+
 export async function recordSuccessionAction(
   _prev: FinancialsActionState,
   form: FormData,
