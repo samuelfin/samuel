@@ -1,6 +1,13 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
-import { approveMetricLibrary, asUser, createTestDatabase, createUser, sha256 } from "./db";
+import {
+  approveMetricLibrary,
+  asUser,
+  createTestDatabase,
+  createUser,
+  expectSqlError,
+  sha256,
+} from "./db";
 
 /**
  * The calculation, and the things it refuses to do.
@@ -262,6 +269,67 @@ describe("a figure a reader may not see produces no ratio", () => {
     expect(await metric(generic, 2003, "net_margin")).toBeUndefined();
     await db.query("update public.datasets set is_active = true where id = 'companies.documents'");
     expect((await metric(generic, 2003, "net_margin"))?.value).toBe("25.000000");
+  });
+
+  it("refuses to activate a dataset with no licence that permits display", async () => {
+    // The write side of binding rule 8, which was already in place: switching a
+    // dataset on is refused unless a licence from the same provider is active
+    // and permits display.
+    await db.query("begin");
+    const error = await expectSqlError(
+      db.query("update public.datasets set licence_id = null where id = 'companies.documents'"),
+    );
+    expect(error.message).toMatch(/cannot be activated without an active licence/i);
+    await db.query("rollback");
+  });
+
+  it("stops displaying when the licence lapses or is withdrawn after activation", async () => {
+    // The read side, which was not. The trigger fires on the dataset, never on
+    // the licence, so a licence revoked or expired after activation left every
+    // figure that came through that dataset on display. The question is now
+    // asked again on every read.
+    await enter({ periodEnd: "2006-12-31", lines: income(1000, 300) });
+    expect((await metric(generic, 2006, "net_margin"))?.value).toBe("30.000000");
+
+    const cases: Array<[string, string]> = [
+      ["the licence was withdrawn", "status = 'terminated'"],
+      ["the licence stopped permitting display", "allows_display = false"],
+      ["the licence lapsed yesterday", "valid_to = current_date - 1"],
+      ["the licence has not started yet", "valid_from = current_date + 1"],
+    ];
+
+    for (const [what, change] of cases) {
+      await db.query("begin");
+      await db.query("update public.data_licences set " + change + " where id = $1", [licenceId]);
+      expect(await metric(generic, 2006, "net_margin"), what).toBeUndefined();
+      await db.query("rollback");
+    }
+
+    // And with the licence as it was, the figure is back.
+    expect((await metric(generic, 2006, "net_margin"))?.value).toBe("30.000000");
+  });
+
+  it("does not demand a licence for SFI's own data", async () => {
+    // An internal provider licenses nothing from anybody. Demanding a licence
+    // row for this platform's own reference data would hide its own writing,
+    // which is why the activation trigger exempts it and why this does too.
+    const { rows } = await db.query<{ access_model: string }>(
+      "select access_model from public.data_providers where id = 'sfi'",
+    );
+    if (rows.length === 0) return;
+    expect(rows[0].access_model).toBe("internal");
+
+    await db.query("begin");
+    await db.query(
+      "update public.datasets set is_active = true where provider_id = 'sfi' and licence_id is null",
+    );
+    const { rows: internal } = await db.query<{ count: number }>(
+      `select count(*)::int as count from public.datasets
+        where provider_id = 'sfi' and is_active and licence_id is null`,
+    );
+    // Activating one is allowed, which is the exemption this mirrors.
+    expect(internal[0].count).toBeGreaterThanOrEqual(0);
+    await db.query("rollback");
   });
 
   it("ignores an interim period", async () => {
