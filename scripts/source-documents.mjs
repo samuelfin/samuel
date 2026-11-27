@@ -122,19 +122,49 @@ const admin = createClient(url, key, {
   auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
 });
 
-// Act as a real analyst or editor — record_uploaded_document rejects anyone
-// else, and the audit log should name a person, not an anonymous process.
+// Act as a real person — record_uploaded_document accepts a platform admin or
+// an analyst/editor and rejects anyone else, and the audit log should name a
+// person, not an anonymous process. `--as <user id>` names the person who asked
+// for this run; without it, the first analyst (then editor) is used.
+const asIndex = flags.indexOf("--as");
+const requestedActor = asIndex >= 0 ? flags[asIndex + 1] : null;
+if (asIndex >= 0 && !/^[0-9a-f-]{36}$/i.test(requestedActor ?? "")) {
+  console.error("--as takes the user id of the person running this import.");
+  process.exit(2);
+}
+
 const { data: staff, error: staffError } = await admin
   .from("platform_staff")
   .select("user_id, role")
   .in("role", ["analyst", "editor"]);
-
-if (staffError || !staff?.length) {
-  console.error(`No analyst or editor to act as: ${staffError?.message ?? "none found"}`);
-  console.error("Grant someone that role on the admin user page first.");
+if (staffError) {
+  console.error(`Could not read staff roles: ${staffError.message}`);
   process.exit(1);
 }
-const actor = staff.find((s) => s.role === "analyst")?.user_id ?? staff[0].user_id;
+
+let actor;
+if (requestedActor) {
+  const { data: admins, error: adminError } = await admin
+    .from("platform_admins")
+    .select("user_id")
+    .eq("user_id", requestedActor);
+  if (adminError) {
+    console.error(`Could not read platform admins: ${adminError.message}`);
+    process.exit(1);
+  }
+  if (!admins?.length && !staff.some((s) => s.user_id === requestedActor)) {
+    console.error("--as must name a platform admin, analyst or editor.");
+    process.exit(1);
+  }
+  actor = requestedActor;
+} else {
+  if (!staff.length) {
+    console.error("No analyst or editor to act as: none found");
+    console.error("Grant someone that role, or pass --as <platform admin user id>.");
+    process.exit(1);
+  }
+  actor = staff.find((s) => s.role === "analyst")?.user_id ?? staff[0].user_id;
+}
 
 const { data: companies, error: companiesError } = await admin.from("companies").select("id, name");
 if (companiesError) {
