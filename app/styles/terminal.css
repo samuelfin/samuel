@@ -173,6 +173,10 @@
 /* ---------- Main and status bar ---------- */
 .term-main {
   grid-area: main;
+  /* Contain absolutely positioned descendants (e.g. .sr-only table captions):
+     without a positioned ancestor they escape this scroll box and stretch the
+     document far past the 100dvh shell, leaving blank space below it. */
+  position: relative;
   overflow-y: auto;
   padding: 12px 14px 28px;
   min-width: 0;
